@@ -1,23 +1,29 @@
-import { ITestimonial } from "@/types";
-import { siteDetails } from "./siteDetails";
-
-export const testimonials: ITestimonial[] = [
+import {
+    Rocket,
+    MessageCircle,
+    ArrowRightLeft,
+  } from "lucide-react";
+  
+  export const testimonials = [
     {
-        name: 'John Smith',
-        role: 'CEO at Company',
-        message: `${siteDetails.siteName}'s AI-driven insights have transformed how we approach financial planning for our clients. It's an invaluable resource in the modern financial landscape.`,
-        avatar: '/images/testimonial-1.webp',
+      name: "Activación inmediata",
+      role: "Desde el primer día",
+      message:
+        "ELI comienza a operar inmediatamente mediante un bot de Telegram configurado para tu administración.",
+      icon: Rocket,
     },
     {
-        name: 'Jane Doe',
-        role: 'CTO at Startup',
-        message: `As a CTO, I'm impressed by ${siteDetails.siteName}'s robust security measures and seamless integrations. It's rare to find an app that balances user-friendliness with such advanced technology.`,
-        avatar: '/images/testimonial-2.webp',
+      name: "Onboarding WhatsApp",
+      role: "Nos ocupamos de todo",
+      message:
+        "Configuramos Meta Business, la cuenta oficial, el número y todo el proceso de aprobación de WhatsApp Business.",
+      icon: MessageCircle,
     },
     {
-        name: 'Emily Johnson',
-        role: 'Product Manager',
-        message: `${siteDetails.siteName} is revolutionizing personal finance management. Its intuitive design and powerful features make it an indispensable tool for anyone serious about financial growth.`,
-        avatar: '/images/testimonial-3.webp',
+      name: "Migración transparente",
+      role: "Sin perder información",
+      message:
+        "Una vez aprobado por Meta, ELI migra automáticamente de Telegram a WhatsApp manteniendo el historial y la configuración.",
+      icon: ArrowRightLeft,
     },
-];
+  ];

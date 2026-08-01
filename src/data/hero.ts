@@ -1,5 +1,5 @@
 export const heroDetails = {
-    heading: 'Smart, Secure, Simple Financial Management',
-    subheading: 'From effortless budgeting to real-time investment insights, Finwise puts you in control of your money like never before',
+    heading: 'Dejá el caos atrás, Administr\á consorcios',
+    subheading: 'ELI transforma el caos de WhatsApp en una operación organizada. Automatizá consultas, reclamos y pagos desde un único centro de control.',
     centerImageSrc: '/images/hero-mockup.webp',
 }

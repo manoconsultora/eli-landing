@@ -1,12 +1,12 @@
 export const siteDetails = {
-    siteName: 'Finwise',
-    siteUrl: 'https://finwise-omega.vercel.app/',
+    siteName: 'ELI Consorcios',
+    siteUrl: 'https://eli.ma-no.work//',
     metadata: {
-        title: 'Finwise - Next.js and Tailwind CSS Landing Page Template',
-        description: 'Finwise empowers businesses with cutting-edge technology solutions to drive success and efficiency.',
+        title: 'ELI Consorcios | Automatizá Reclamos, Pagos y Atención con IA',
+        description: 'ELI transforma el caos de WhatsApp en una operación organizada. Automatizá consultas, reclamos y pagos desde un único centro de control.',
     },
-    language: 'en-us',
-    locale: 'en-US',
-    siteLogo: `${process.env.BASE_PATH || ''}/images/logo.png`, // or use a string for the logo e.g. "TechStartup"
+    language: 'es-ar',
+    locale: 'es-AR',
+    siteLogo: `${process.env.BASE_PATH || ''}/images/eli-logo.svg`, //logo oficial de eli consorcios
     googleAnalyticsId: '', // e.g. G-XXXXXXX,
 }

@@ -26,12 +26,13 @@ export interface IFAQ {
     question: string;
     answer: string;
 }
+import type { LucideIcon } from "lucide-react";
 
 export interface ITestimonial {
     name: string;
     role: string;
     message: string;
-    avatar: string;
+    icon: LucideIcon;
 }
 
 export interface IStats {

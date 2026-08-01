@@ -19,16 +19,16 @@ const HomePage: React.FC = () => {
 
         <Section
           id="pricing"
-          title="Pricing"
-          description="Simple, transparent pricing. No surprises."
+          title="Planes"
+          description="Desde un edificio hasta múltiples consorcios, ELI crece con vos."
         >
           <Pricing />
         </Section>
 
         <Section
           id="testimonials"
-          title="What Our Clients Say"
-          description="Hear from those who have partnered with us."
+          title="Implementación"
+          description="Nos ocupamos de la puesta en marcha para que puedas comenzar a usar ELI desde el primer día."
         >
           <Testimonials />
         </Section>

@@ -1,25 +1,42 @@
-import { IFAQ } from "@/types";
-import { siteDetails } from "./siteDetails";
-
-export const faqs: IFAQ[] = [
+export const faqs = [
     {
-        question: `Is ${siteDetails.siteName} secure?`,
-        answer: 'Absolutely. We use bank-level encryption to protect your data and never store your login information. Plus, our biometric authentication adds an extra layer of security.',
+      question: "¿Necesito instalar algún software?",
+      answer:
+        "No. ELI funciona completamente en la nube. Solo necesitás un navegador web para acceder al Dashboard y administrar tus consorcios desde cualquier lugar.",
     },
     {
-        question: `Can I use ${siteDetails.siteName} on multiple devices?`,
-        answer: 'Absolutely! Your Finwise account syncs seamlessly across all your devices - smartphone, tablet, and computer.',
+      question: "¿Cómo funciona la implementación?",
+      answer:
+        "Una vez contratado el servicio, configuramos tu administración y ELI comienza a operar inmediatamente mediante Telegram. En paralelo iniciamos el proceso de integración del canal oficial de WhatsApp Business.",
     },
     {
-        question: 'Can I connect all my bank accounts?',
-        answer: `Yes! ${siteDetails.siteName} supports connections with over 10,000 financial institutions worldwide. Simply log in through our secure portal to link your accounts.`
+      question: "¿Cuánto demora integrar WhatsApp Business?",
+      answer:
+        "La habilitación del canal oficial de WhatsApp Business suele demorar aproximadamente 4 semanas, dependiendo de los procesos de validación y aprobación de Meta. Durante ese período, ELI funciona normalmente mediante Telegram para que puedas comenzar a trabajar desde el primer día.",
     },
     {
-        question: 'Do I need any financial expertise to use the investing features?',
-        answer: 'Not at all! Our expert-curated portfolios and educational resources make investing accessible to everyone, regardless of experience level.',
+      question: "¿Qué ocurre cuando WhatsApp queda aprobado?",
+      answer:
+        "Una vez aprobado por Meta, realizamos la migración al canal oficial de WhatsApp de forma transparente, manteniendo el historial, la configuración y toda la información generada durante la implementación.",
     },
     {
-        question: 'What if I need help using the app?',
-        answer: 'Our dedicated support team is available 24/7 via chat or email. Plus, we offer extensive in-app tutorials and a comprehensive knowledge base to help you make the most of Finwise.'
-    }
-];
+      question: "¿Por qué ELI comienza con Telegram?",
+      answer:
+        "Telegram nos permite poner ELI en funcionamiento de forma inmediata. Mientras tanto, completamos el proceso de aprobación requerido por Meta para habilitar el canal oficial de WhatsApp Business, evitando que tu administración tenga que esperar para comenzar a utilizar la plataforma.",
+    },
+    {
+      question: "¿Qué consultas puede responder ELI?",
+      answer:
+        "ELI responde consultas sobre reglamentos, amenities, reclamos, documentación, estados de tickets, pagos y toda la información que incorpores a la base documental de tu administración.",
+    },
+    {
+      question: "¿Puede atender varios consorcios?",
+      answer:
+        "Sí. ELI fue diseñado como una plataforma multi-consorcio. La cantidad de edificios y unidades funcionales dependerá del plan contratado y podrá ampliarse a medida que crezca tu operación.",
+    },
+    {
+      question: "¿La información de mi administración está protegida?",
+      answer:
+        "Sí. Toda la información se almacena en infraestructura cloud segura, con backups automáticos, acceso controlado y aislamiento de datos entre administraciones.",
+    },
+  ];
