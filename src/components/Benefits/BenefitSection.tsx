@@ -50,35 +50,32 @@ const BenefitSection: React.FC<Props> = ({ benefit, imageAtRight }: Props) => {
     const { title, description, imageSrc, bullets } = benefit;
 
     return (
-        <section className="benefit-section">
+        <section className="benefit-section overflow-x-clip">
             <motion.div
-                className="flex flex-wrap flex-col items-center justify-center gap-2 lg:flex-row lg:gap-20 lg:flex-nowrap mb-24"
+                className="mb-24 flex flex-col items-center justify-center gap-2 overflow-x-clip lg:flex-row lg:flex-nowrap lg:gap-20"
                 variants={containerVariants}
                 initial="offscreen"
                 whileInView="onscreen"
                 viewport={{ once: true }}
             >
                 <div
-                    className={clsx("flex flex-wrap items-center w-full max-w-lg", { "justify-start": imageAtRight, "lg:order-1 justify-end": !imageAtRight })}
-                    
+                    className={clsx("flex w-full max-w-lg flex-wrap items-center", {
+                        "justify-start": imageAtRight,
+                        "justify-end lg:order-1": !imageAtRight,
+                    })}
                 >
-                    <div className="w-full  text-center lg:text-left ">
-                        <motion.div
-                            className="flex flex-col w-full"
-                            variants={childVariants}
-                        >
+                    <div className="w-full text-center lg:text-left">
+                        <motion.div className="flex w-full flex-col" variants={childVariants}>
                             <SectionTitle>
-                                <h3 className="lg:max-w-2xl">
-                                    {title}
-                                </h3>
+                                <h3 className="lg:max-w-2xl">{title}</h3>
                             </SectionTitle>
 
-                            <p className="mt-1.5 mx-auto lg:ml-0 leading-normal text-foreground-accent">
+                            <p className="mx-auto mt-1.5 leading-normal text-foreground-accent lg:ml-0">
                                 {description}
                             </p>
                         </motion.div>
 
-                        <div className="mx-auto lg:ml-0 w-full">
+                        <div className="mx-auto w-full lg:ml-0">
                             {bullets.map((item, index) => (
                                 <BenefitBullet key={index} title={item.title} icon={item.icon} description={item.description} />
                             ))}
@@ -86,9 +83,21 @@ const BenefitSection: React.FC<Props> = ({ benefit, imageAtRight }: Props) => {
                     </div>
                 </div>
 
-                <div className={clsx("mt-5 lg:mt-0", { "lg:order-2": imageAtRight })}>
-                    <div className={clsx("w-fit flex", { "justify-start": imageAtRight, "justify-end": !imageAtRight })}>
-                        <Image src={imageSrc} alt="title" width="384" height="762" quality={100} className="lg:ml-0" />
+                <div className={clsx("mt-5 w-full lg:mt-0 lg:w-auto", { "lg:order-2": imageAtRight })}>
+                    <div
+                        className={clsx("flex w-full justify-center overflow-hidden", {
+                            "lg:justify-start": imageAtRight,
+                            "lg:justify-end": !imageAtRight,
+                        })}
+                    >
+                        <Image
+                            src={imageSrc}
+                            alt={title}
+                            width={384}
+                            height={762}
+                            quality={100}
+                            className="h-auto w-full max-w-[384px] lg:ml-0"
+                        />
                     </div>
                 </div>
             </motion.div>
@@ -96,4 +105,4 @@ const BenefitSection: React.FC<Props> = ({ benefit, imageAtRight }: Props) => {
     );
 }
 
-export default BenefitSection
+export default BenefitSection;

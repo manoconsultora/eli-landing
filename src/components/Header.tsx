@@ -19,12 +19,12 @@ const Header: React.FC = () => {
     return (
         <header className="bg-transparent fixed top-0 left-0 right-0 md:absolute z-50 mx-auto w-full">
             <Container className="!px-0">
-                <nav className="shadow-md md:shadow-none bg-white md:bg-transparent mx-auto flex justify-between items-center py-2 px-5 md:py-10">
+                <nav className="shadow-md md:shadow-none bg-white md:bg-transparent mx-auto flex w-full items-center justify-between gap-3 overflow-hidden py-2 px-5 md:py-10">
                     {/* Logo */}
-                    <Link href="/" className="flex items-center gap-2">
+                    <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pr-2">
                         {/* <FaFingerprint className="text-foreground min-w-fit w-7 h-7" /> */}
-                        <img src="/images/eli-logo.svg" alt="ELI Consorcios" className="min-w-fit w-7 h-7" />
-                        <span className="manrope text-xl font-semibold text-foreground cursor-pointer">
+                        <img src="/images/eli-logo.svg" alt="ELI Consorcios" className="h-7 w-7 shrink-0" />
+                        <span className="manrope truncate text-xl font-semibold text-foreground cursor-pointer">
                             {siteDetails.siteName}
                         </span>
                     </Link>
@@ -46,7 +46,7 @@ const Header: React.FC = () => {
                     </ul>
 
                     {/* Mobile Menu Button */}
-                    <div className="md:hidden flex items-center">
+                    <div className="md:hidden flex shrink-0 items-center">
                         <button
                             onClick={toggleMenu}
                             type="button"
