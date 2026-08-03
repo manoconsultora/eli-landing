@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import React, { useState } from 'react';
 import { Transition } from '@headlessui/react';
@@ -18,12 +19,12 @@ const Header: React.FC = () => {
 
     return (
         <header className="bg-transparent fixed top-0 left-0 right-0 md:absolute z-50 mx-auto w-full">
-            <Container className="!px-0">
-                <nav className="shadow-md md:shadow-none bg-white md:bg-transparent mx-auto flex w-full items-center justify-between gap-3 overflow-hidden py-2 px-5 md:py-10">
+            <Container className="!px-4">
+                <nav className="mx-auto mt-3 flex w-full items-center justify-between gap-3 overflow-hidden rounded-full border border-background/60 bg-background/88 px-5 py-2 text-foreground shadow-xl shadow-primary/12 backdrop-blur md:mt-6 md:max-w-6xl md:py-3">
                     {/* Logo */}
                     <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pr-2">
                         {/* <FaFingerprint className="text-foreground min-w-fit w-7 h-7" /> */}
-                        <img src="/images/eli-logo.svg" alt="ELI Consorcios" className="h-7 w-7 shrink-0" />
+                        <Image src="/images/eli-logo.svg" alt="ELI Consorcios" width={28} height={28} className="h-7 w-7 shrink-0" />
                         <span className="manrope truncate text-xl font-semibold text-foreground cursor-pointer">
                             {siteDetails.siteName}
                         </span>
@@ -33,13 +34,13 @@ const Header: React.FC = () => {
                     <ul className="hidden md:flex space-x-6">
                         {menuItems.map(item => (
                             <li key={item.text}>
-                                <Link href={item.url} className="text-foreground hover:text-foreground-accent transition-colors">
+                                <Link href={item.url} className="text-foreground/72 hover:text-foreground transition-colors">
                                     {item.text}
                                 </Link>
                             </li>
                         ))}
                         <li>
-                            <Link href="#cta" className="text-white bg-[#3B5BFF] hover:bg-[#2F4BE0] px-8 py-3 rounded-full transition-colors">
+                            <Link href="#cta" className="rounded-full bg-secondary px-8 py-3 font-semibold text-primary transition-colors hover:bg-secondary/85">
                                 Solicitar demo
                             </Link>
                         </li>
@@ -50,7 +51,7 @@ const Header: React.FC = () => {
                         <button
                             onClick={toggleMenu}
                             type="button"
-                            className="bg-primary text-black focus:outline-none rounded-full w-10 h-10 flex items-center justify-center"
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-background focus:outline-none"
                             aria-controls="mobile-menu"
                             aria-expanded={isOpen}
                         >
@@ -75,17 +76,17 @@ const Header: React.FC = () => {
                 leaveFrom="opacity-100 scale-100"
                 leaveTo="opacity-0 scale-95"
             >
-                <div id="mobile-menu" className="md:hidden bg-white shadow-lg">
+                <div id="mobile-menu" className="mx-4 mt-3 rounded-3xl border border-background/60 bg-background/96 text-foreground shadow-2xl shadow-primary/12 backdrop-blur md:hidden">
                     <ul className="flex flex-col space-y-4 pt-1 pb-6 px-6">
                         {menuItems.map(item => (
                             <li key={item.text}>
-                                <Link href={item.url} className="text-foreground hover:text-primary block" onClick={toggleMenu}>
+                                <Link href={item.url} className="block text-foreground/78 transition-colors hover:text-foreground" onClick={toggleMenu}>
                                     {item.text}
                                 </Link>
                             </li>
                         ))}
                         <li>
-                            <Link href="#cta" className="text-white bg-[#3B5BFF] hover:bg-[#2F4BE0] px-5 py-2 rounded-full block w-fit" onClick={toggleMenu}>
+                            <Link href="#cta" className="block w-fit rounded-full bg-secondary px-5 py-2 font-semibold text-primary transition-colors hover:bg-secondary/85" onClick={toggleMenu}>
                                 Solicitar demo
                             </Link>
                         </li>

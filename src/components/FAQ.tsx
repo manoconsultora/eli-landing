@@ -17,17 +17,17 @@ const FAQ: React.FC = () => {
                     <p className="lg:mt-10 text-foreground-accent text-center lg:text-left">
                         Preguntanos lo que quieras!
                     </p>
-                    <a href="mailto:" className="mt-3 block text-xl lg:text-4xl text-secondary font-semibold hover:underline text-center lg:text-left">hey@ma-no.work</a>
+                    <a href="mailto:" className="mt-3 block text-center text-xl font-semibold text-secondary hover:underline lg:text-left lg:text-4xl">hey@ma-no.work</a>
                 </div>
 
-                <div className="w-full lg:max-w-2xl mx-auto border-b">
+                <div className="mx-auto w-full border-b border-surface/90 lg:max-w-2xl">
                     {faqs.map((faq, index) => (
                         <div key={index} className="mb-7">
                             <Disclosure>
                                 {({ open }) => (
                                     <>
-                                        <DisclosureButton className="flex items-center justify-between w-full px-4 pt-7 text-lg text-left border-t">
-                                            <span className="text-2xl font-semibold">{faq.question}</span>
+                                        <DisclosureButton className="flex w-full items-center justify-between border-t border-surface/90 px-4 pt-7 text-left text-lg">
+                                            <span className="text-2xl font-semibold text-foreground">{faq.question}</span>
                                             {open ? <BiMinus className="w-5 h-5 text-secondary" /> : <BiPlus className="w-5 h-5 text-secondary" />}
                                         </DisclosureButton>
                                         <DisclosurePanel className="px-4 pt-4 pb-2 text-foreground-accent">

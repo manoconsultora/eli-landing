@@ -9,14 +9,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        primary: "var(--primary)",
-        secondary: "var(--secondary)",
-
-        "primary-accent": "var(--primary-accent)",
-        "foreground-accent": "var(--foreground-accent)",
-        "hero-background": "var(--hero-background)",
+        background: "rgb(var(--background) / <alpha-value>)",
+        foreground: "rgb(var(--foreground) / <alpha-value>)",
+        primary: "rgb(var(--primary) / <alpha-value>)",
+        secondary: "rgb(var(--secondary) / <alpha-value>)",
+        "primary-accent": "rgb(var(--primary-accent) / <alpha-value>)",
+        "foreground-accent": "rgb(var(--foreground-accent) / <alpha-value>)",
+        "hero-background": "rgb(var(--hero-background) / <alpha-value>)",
+        surface: "rgb(var(--surface) / <alpha-value>)",
+        "surface-dark": "rgb(var(--surface-dark) / <alpha-value>)",
+        border: "rgb(var(--border) / <alpha-value>)",
       },
     },
   },

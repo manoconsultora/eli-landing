@@ -10,19 +10,21 @@ const Hero: React.FC = () => {
     return (
         <section
             id="hero"
-            className="relative overflow-x-clip px-5 pb-0 pt-32 flex items-center justify-center md:pt-40"
+            className="hero-surface relative flex items-center justify-center overflow-x-clip px-5 pb-0 pt-32 text-foreground md:pt-40"
         >
             <div className="absolute left-0 top-0 bottom-0 -z-10 w-full">
-                <div className="absolute inset-0 h-full w-full bg-hero-background bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_60%,transparent_100%)]">
+                <div className="hero-grid absolute inset-0 h-full w-full">
+                    <div className="hero-top-glow absolute inset-x-0 top-0 h-72" />
+                    <div className="absolute right-12 top-24 h-36 w-36 rounded-full border border-primary/12" />
+                    <div className="absolute bottom-0 left-1/2 h-64 w-[32rem] -translate-x-1/2 rounded-full bg-primary/8 blur-3xl" />
                 </div>
             </div>
 
-            <div className="absolute left-0 right-0 bottom-0 backdrop-blur-[2px] h-40 bg-gradient-to-b from-transparent via-[rgba(233,238,255,0.5)] to-[rgba(202,208,230,0.5)]">
-            </div>
+            <div className="hero-bottom-fade absolute bottom-0 left-0 right-0 h-40 backdrop-blur-[2px]" />
 
             <div className="w-full text-center">
-                <h1 className="text-4xl md:text-6xl md:leading-tight font-bold text-foreground max-w-lg md:max-w-2xl mx-auto">{heroDetails.heading}</h1>
-                <p className="mt-4 text-foreground max-w-lg mx-auto">{heroDetails.subheading}</p>
+                <h1 className="mx-auto max-w-lg text-4xl font-bold text-foreground md:max-w-2xl md:text-6xl md:leading-tight">{heroDetails.heading}</h1>
+                <p className="mx-auto mt-4 max-w-lg text-foreground/78">{heroDetails.subheading}</p>
                 <div className="mx-auto mt-6 flex w-full max-w-[320px] flex-col items-center sm:w-fit sm:max-w-none sm:flex-row sm:gap-4">
                     <AppStoreButton dark />
                     <PlayStoreButton dark />
@@ -36,7 +38,7 @@ const Hero: React.FC = () => {
                     priority={true}
                     unoptimized={true}
                     alt="app mockup"
-                    className='relative z-10 mt-12 mx-auto h-auto w-full max-w-[384px] md:mt-16'
+                    className="hero-device-shadow relative z-10 mx-auto mt-12 h-auto w-full max-w-[384px] md:mt-16"
                 />
             </div>
         </section>

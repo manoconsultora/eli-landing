@@ -6,7 +6,6 @@ import { CirclePlay } from "lucide-react";
 import VideoModal from "./VideoModal";
 
 const PlayStoreButton = ({ dark }: { dark?: boolean }) => {
-    void dark;
     const [isVideoOpen, setIsVideoOpen] = useState(false);
 
     return (
@@ -15,9 +14,10 @@ const PlayStoreButton = ({ dark }: { dark?: boolean }) => {
             type="button"
             onClick={() => setIsVideoOpen(true)}
             className={clsx(
-                "flex items-center justify-center min-w-[205px] mt-3 px-6 h-14 rounded-full w-full sm:w-fit transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl",
+                "mt-3 flex h-14 min-w-[205px] w-full items-center justify-center rounded-full px-6 transition-all duration-300 hover:scale-105 sm:w-fit",
                 {
-                    "bg-[#FF0000] text-white hover:bg-[#CC0000]": true,
+                    "border border-primary/18 bg-primary text-secondary shadow-lg shadow-primary/20 hover:bg-primary/92": dark,
+                    "border border-primary/12 bg-white text-primary shadow-lg shadow-primary/10 hover:bg-surface/45": !dark,
                 }
             )}
         >

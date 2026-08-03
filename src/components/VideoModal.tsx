@@ -34,7 +34,7 @@ export default function VideoModal({
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-primary/80 p-4 backdrop-blur-sm"
             onClick={onClose}
         >
             <div
@@ -45,12 +45,12 @@ export default function VideoModal({
                     type="button"
                     onClick={onClose}
                     aria-label="Cerrar video"
-                    className="absolute -right-2 -top-12 flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
+                    className="absolute -right-2 -top-12 flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-primary transition hover:scale-105 hover:bg-secondary/90"
                 >
                     <X size={22} />
                 </button>
 
-                <div className="aspect-[9/16] overflow-hidden rounded-2xl bg-black shadow-2xl">
+                <div className="aspect-[9/16] overflow-hidden rounded-2xl bg-surface-dark shadow-2xl shadow-primary/40">
                     <iframe
                         className="h-full w-full"
                         src="https://www.youtube.com/embed/XJJ6BfSuYRA?autoplay=1&rel=0"

@@ -16,9 +16,9 @@ const Pricing: React.FC = () => {
                 ))}
             </div>
 
-            <div className="max-w-4xl mx-auto mt-10 space-y-4 text-sm text-gray-500">
+            <div className="mx-auto mt-10 max-w-4xl space-y-4 text-sm text-foreground-accent">
                 <div className="flex items-start gap-2">
-                    <FiInfo className="mt-0.5 shrink-0" />
+                    <FiInfo className="mt-0.5 shrink-0 text-secondary" />
                     <p>
                         Los límites de consorcios y unidades funcionales garantizan el rendimiento óptimo de ELI.
                         Si tu administración requiere una mayor capacidad, diseñaremos un plan a medida.
@@ -26,7 +26,7 @@ const Pricing: React.FC = () => {
                 </div>
 
                 <div className="flex items-start gap-2">
-                    <FiInfo className="mt-0.5 shrink-0" />
+                    <FiInfo className="mt-0.5 shrink-0 text-secondary" />
                     <p>
                         Todos los planes incluyen la implementación inicial. ELI comienza a operar inmediatamente mediante Telegram,
                         mientras realizamos el onboarding del canal oficial de WhatsApp Business. Una vez aprobado por Meta,

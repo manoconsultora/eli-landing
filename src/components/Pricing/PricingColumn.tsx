@@ -12,26 +12,42 @@ const PricingColumn: React.FC<Props> = ({ tier, highlight }: Props) => {
     const { name, price, features } = tier;
 
     return (
-        <div className={clsx("w-full max-w-sm mx-auto bg-white rounded-xl border border-gray-200 lg:max-w-full", { "shadow-lg": highlight })}>
-            <div className="p-6 border-b border-gray-200 rounded-t-xl">
-                <h3 className="text-2xl font-semibold mb-4">{name}</h3>
-                <p className="text-3xl md:text-5xl font-bold mb-6">
+        <div
+            className={clsx(
+                "mx-auto w-full max-w-sm rounded-2xl border border-surface/90 bg-white lg:max-w-full",
+                {
+                    "pricing-highlight-shadow ring-1 ring-secondary/35": highlight,
+                    "shadow-sm shadow-primary/5": !highlight,
+                }
+            )}
+        >
+            <div className="rounded-t-2xl border-b border-surface/90 p-6">
+                <h3 className="mb-4 text-2xl font-semibold text-foreground">{name}</h3>
+                <p className="mb-6 text-3xl font-bold text-foreground md:text-5xl">
                     <span className={clsx({ "text-secondary": highlight })}>
                         {typeof price === 'number' ? `$${price}` : price}
                     </span>
-                    {typeof price === 'number' && <span className="text-lg font-normal text-gray-600">/mo</span>}
+                    {typeof price === 'number' && <span className="text-lg font-normal text-foreground-accent">/mo</span>}
                 </p>
-                <button className={clsx("w-full py-3 px-4 rounded-full transition-colors", { "bg-primary hover:bg-primary-accent": highlight, "bg-hero-background hover:bg-gray-200": !highlight })}>
+                <button
+                    className={clsx(
+                        "w-full rounded-full px-4 py-3 font-semibold transition-colors",
+                        {
+                            "bg-primary text-background hover:bg-primary/92": highlight,
+                            "bg-surface/45 text-foreground hover:bg-surface/80": !highlight,
+                        }
+                    )}
+                >
                     Solicitar demo
                 </button>
             </div>
             <div className="p-6 mt-1">
-                <p className="font-bold mb-0">FUNCIONES</p>
-                <p className="text-foreground-accent mb-5">Todo lo necesario para empezar.</p>
+                <p className="mb-0 font-bold text-foreground">FUNCIONES</p>
+                <p className="mb-5 text-foreground-accent">Todo lo necesario para empezar.</p>
                 <ul className="space-y-4 mb-8">
                     {features.map((feature, index) => (
                         <li key={index} className="flex items-center">
-                            <BsFillCheckCircleFill className="h-5 w-5 text-secondary mr-2" />
+                            <BsFillCheckCircleFill className="mr-2 h-5 w-5 text-secondary" />
                             <span className="text-foreground-accent">{feature}</span>
                         </li>
                     ))}
