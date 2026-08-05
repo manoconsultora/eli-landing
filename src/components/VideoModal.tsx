@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface VideoModalProps {
@@ -32,9 +33,9 @@ export default function VideoModal({
 
     if (!isOpen) return null;
 
-    return (
+    const modalContent = (
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-primary/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-primary/80 p-4 backdrop-blur-sm"
             onClick={onClose}
         >
             <div
@@ -53,7 +54,7 @@ export default function VideoModal({
                 <div className="aspect-[9/16] overflow-hidden rounded-2xl bg-surface-dark shadow-2xl shadow-primary/40">
                     <iframe
                         className="h-full w-full"
-                        src="https://www.youtube.com/embed/XJJ6BfSuYRA?autoplay=1&rel=0"
+                        src="https://www.youtube.com/embed/6nhmtsxWdFo?autoplay=1&rel=0"
                         title="Video de presentación de ELI Consorcios"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen
@@ -62,4 +63,6 @@ export default function VideoModal({
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 }

@@ -10,6 +10,21 @@ export const faqs = [
         "Una vez contratado el servicio, configuramos tu administración y ELI comienza a operar inmediatamente mediante Telegram. En paralelo iniciamos el proceso de integración del canal oficial de WhatsApp Business.",
     },
     {
+      question: "¿Cómo funciona la contratación?",
+      answer:
+        "La contratación es directa. Abonás el primer mes y el segundo queda sin cargo para acompañar las 4 semanas de onboarding, configuración y validación del canal oficial de WhatsApp Business.",
+    },
+    {
+      question: "¿En qué consiste el onboarding?",
+      answer:
+        "El onboarding es la etapa inicial en la que adaptamos ELI a la operación de tu administración. Relevamos circuitos, configuramos el entorno, organizamos la información base, definimos criterios de atención y dejamos lista la operación para que empiece a trabajar de inmediato.",
+    },
+    {
+      question: "¿Cómo es el proceso de onboarding?",
+      answer:
+        "El proceso se desarrolla durante las primeras 4 semanas. Comienza con el relevamiento operativo y documental, sigue con la configuración de ELI, la carga y validación de la información clave, y termina con la puesta a punto del canal oficial de WhatsApp Business. Durante todo ese período, ELI ya puede operar mediante Telegram para que empieces a usar la plataforma sin esperar.",
+    },
+    {
       question: "¿Cuánto demora integrar WhatsApp Business?",
       answer:
         "La habilitación del canal oficial de WhatsApp Business suele demorar aproximadamente 4 semanas, dependiendo de los procesos de validación y aprobación de Meta. Durante ese período, ELI funciona normalmente mediante Telegram para que puedas comenzar a trabajar desde el primer día.",

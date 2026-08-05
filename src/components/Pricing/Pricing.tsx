@@ -33,6 +33,14 @@ const Pricing: React.FC = () => {
                         la migración se realiza de forma transparente y sin perder información.
                     </p>
                 </div>
+
+                <div className="flex items-start gap-2">
+                    <FiInfo className="mt-0.5 shrink-0 text-secondary" />
+                    <p>
+                        La contratación es directa: abonás el primer mes y el segundo queda sin cargo para amortizar las
+                        4 semanas de onboarding y validación del canal oficial.
+                    </p>
+                </div>
             </div>
         </>
     );

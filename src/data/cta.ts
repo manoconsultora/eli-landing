@@ -1,6 +1,6 @@
 export const ctaDetails = {
     heading: 'Tu próxima incorporación no es una persona. Es Eli.',
-    subheading: 'Solicitá una demo y conocé cómo la inteligencia artificial puede transformar la administración de tus consorcios.',
+    subheading: 'Contratás el servicio, abonás el primer mes y el segundo queda sin cargo para acompañar las 4 semanas de onboarding e implementación.',
     appStoreUrl: '#',
     googlePlayUrl: '#'
 }

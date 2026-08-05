@@ -24,21 +24,22 @@ const PricingColumn: React.FC<Props> = ({ tier, highlight }: Props) => {
             <div className="rounded-t-2xl border-b border-surface/90 p-6">
                 <h3 className="mb-4 text-2xl font-semibold text-foreground">{name}</h3>
                 <p className="mb-6 text-3xl font-bold text-foreground md:text-5xl">
-                    <span className={clsx({ "text-secondary": highlight })}>
+                    <span className={clsx({ "text-[#54eded]": highlight })}>
                         {typeof price === 'number' ? `$${price}` : price}
                     </span>
                     {typeof price === 'number' && <span className="text-lg font-normal text-foreground-accent">/mo</span>}
                 </p>
                 <button
                     className={clsx(
-                        "w-full rounded-full px-4 py-3 font-semibold transition-colors",
-                        {
-                            "bg-primary text-background hover:bg-primary/92": highlight,
-                            "bg-surface/45 text-foreground hover:bg-surface/80": !highlight,
-                        }
+                        "w-full rounded-full bg-[#54eded] px-4 py-3 text-white transition-colors hover:bg-[#47d7d7] sm:text-primary"
                     )}
                 >
-                    Solicitar demo
+                    <div className="text-xs">
+                        Iniciar onboarding
+                    </div>
+                    <div className="-mt-1 font-sans text-xl font-semibold">
+                        Contratar servicio
+                    </div>
                 </button>
             </div>
             <div className="p-6 mt-1">

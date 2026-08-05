@@ -10,7 +10,7 @@ const AppStoreButton = ({ dark }: { dark?: boolean }) => {
         <a
             href={ctaDetails.appStoreUrl}
             className={clsx(
-                "mt-3 flex h-14 min-w-[205px] w-full items-center justify-center rounded-full bg-secondary px-6 text-primary shadow-lg shadow-secondary/25 transition-all duration-300 hover:bg-secondary/90 sm:w-fit"
+                "mt-3 flex h-14 min-w-[205px] w-full items-center justify-center rounded-full bg-[#54eded] px-6 text-white shadow-lg shadow-primary/12 transition-all duration-300 hover:bg-[#47d7d7] sm:w-fit sm:text-primary"
             )}
         >
             <div className="mr-3">
@@ -19,10 +19,10 @@ const AppStoreButton = ({ dark }: { dark?: boolean }) => {
 
             <div>
                 <div className="text-xs">
-                    Solicitá una demo
+                    Iniciar onboarding
                 </div>
                 <div className="-mt-1 font-sans text-xl font-semibold">
-                    Empezar
+                    Comenzar ahora
                 </div>
             </div>
         </a>

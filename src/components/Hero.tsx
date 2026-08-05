@@ -25,21 +25,27 @@ const Hero: React.FC = () => {
             <div className="w-full text-center">
                 <h1 className="mx-auto max-w-lg text-4xl font-bold text-foreground md:max-w-2xl md:text-6xl md:leading-tight">{heroDetails.heading}</h1>
                 <p className="mx-auto mt-4 max-w-lg text-foreground/78">{heroDetails.subheading}</p>
-                <div className="mx-auto mt-6 flex w-full max-w-[320px] flex-col items-center sm:w-fit sm:max-w-none sm:flex-row sm:gap-4">
+                <div className="relative z-20 mx-auto -mt-3 flex w-full max-w-[320px] flex-col items-center sm:mt-6 sm:w-fit sm:max-w-none sm:flex-row sm:gap-4">
                     <AppStoreButton dark />
                     <PlayStoreButton dark />
                 </div>
-                <Image
-                    src={heroDetails.centerImageSrc}
-                    width={384}
-                    height={340}
-                    quality={100}
-                    sizes="(max-width: 768px) 100vw, 384px"
-                    priority={true}
-                    unoptimized={true}
-                    alt="app mockup"
-                    className="hero-device-shadow relative z-10 mx-auto mt-12 h-auto w-full max-w-[384px] md:mt-16"
-                />
+                <div className="pointer-events-none relative z-10 mx-auto -mb-16 -mt-12 w-[min(92vw,620px)] max-w-none sm:-mb-[clamp(30px,5vw,74px)] sm:mt-[clamp(8px,1.8vw,18px)]">
+                    <div
+                        aria-hidden="true"
+                        className="absolute inset-x-[10%] top-[14%] z-0 h-[52%] rounded-full bg-primary/18 blur-[72px] sm:inset-x-[12%] sm:top-[18%] sm:h-[48%] sm:blur-[96px]"
+                    />
+                    <Image
+                        src={heroDetails.centerImageSrc}
+                        width={620}
+                        height={550}
+                        quality={100}
+                        sizes="(max-width: 768px) 92vw, 620px"
+                        priority={true}
+                        unoptimized={true}
+                        alt="app mockup"
+                        className="hero-device-shadow relative z-10 mx-auto h-auto w-full"
+                    />
+                </div>
             </div>
         </section>
     );
