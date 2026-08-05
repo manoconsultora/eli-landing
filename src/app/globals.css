@@ -121,6 +121,21 @@ main {
   .pricing-highlight-shadow {
     box-shadow: 0 24px 70px -32px rgb(var(--pricing-highlight-shadow) / 0.45);
   }
+
+  .hero-bubble-float {
+    animation: heroBubbleFloat 3.2s ease-in-out infinite;
+  }
+}
+
+@keyframes heroBubbleFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
 }
 
 .manrope {

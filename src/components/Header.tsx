@@ -7,7 +7,6 @@ import { Transition } from '@headlessui/react';
 import { HiOutlineXMark, HiBars3 } from 'react-icons/hi2';
 
 import Container from './Container';
-import { siteDetails } from '@/data/siteDetails';
 import { menuItems } from '@/data/menuItems';
 
 const Header: React.FC = () => {
@@ -20,14 +19,10 @@ const Header: React.FC = () => {
     return (
         <header className="bg-transparent fixed top-0 left-0 right-0 md:absolute z-[120] mx-auto w-full">
             <Container className="!px-4">
-                <nav className="relative z-[120] mx-auto mt-3 flex w-full items-center justify-between gap-3 overflow-hidden rounded-full border border-background/60 bg-background/88 px-5 py-2 text-foreground shadow-xl shadow-primary/12 backdrop-blur md:mt-6 md:max-w-6xl md:py-3">
+                <nav className="relative z-[120] mx-auto mt-3 flex w-full items-center justify-between gap-3 overflow-hidden rounded-full bg-background/88 px-5 py-2 text-foreground shadow-xl shadow-primary/12 backdrop-blur md:mt-6 md:max-w-6xl md:py-3">
                     {/* Logo */}
-                    <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pr-2">
-                        {/* <FaFingerprint className="text-foreground min-w-fit w-7 h-7" /> */}
-                        <Image src="/images/eli-logo.svg" alt="ELI Consorcios" width={28} height={28} className="h-7 w-7 shrink-0" />
-                        <span className="manrope truncate text-xl font-semibold text-foreground cursor-pointer">
-                            {siteDetails.siteName}
-                        </span>
+                    <Link href="/" className="flex min-w-0 flex-1 items-center overflow-hidden pr-2">
+                        <Image src="/images/logo_eli.svg" alt="ELI Consorcios" width={72} height={72} className="h-16 w-16 shrink-0 md:h-20 md:w-20" />
                     </Link>
 
                     {/* Desktop Menu */}
@@ -76,7 +71,7 @@ const Header: React.FC = () => {
                 leaveFrom="opacity-100 scale-100"
                 leaveTo="opacity-0 scale-95"
             >
-                <div id="mobile-menu" className="relative z-[125] mx-4 mt-3 rounded-3xl border border-background/60 bg-background/96 text-foreground shadow-2xl shadow-primary/12 backdrop-blur md:hidden">
+                <div id="mobile-menu" className="relative z-[125] mx-4 mt-3 rounded-3xl bg-background/96 text-foreground shadow-2xl shadow-primary/12 backdrop-blur md:hidden">
                     <ul className="flex flex-col space-y-4 pt-1 pb-6 px-6">
                         {menuItems.map(item => (
                             <li key={item.text}>

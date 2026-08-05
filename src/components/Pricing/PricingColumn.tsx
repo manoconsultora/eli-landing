@@ -14,14 +14,14 @@ const PricingColumn: React.FC<Props> = ({ tier, highlight }: Props) => {
     return (
         <div
             className={clsx(
-                "mx-auto w-full max-w-sm rounded-2xl border border-surface/90 bg-white lg:max-w-full",
+                "mx-auto w-full max-w-sm rounded-2xl bg-white lg:max-w-full",
                 {
-                    "pricing-highlight-shadow ring-1 ring-secondary/35": highlight,
+                    "pricing-highlight-shadow": highlight,
                     "shadow-sm shadow-primary/5": !highlight,
                 }
             )}
         >
-            <div className="rounded-t-2xl border-b border-surface/90 p-6">
+            <div className="rounded-t-2xl p-6">
                 <h3 className="mb-4 text-2xl font-semibold text-foreground">{name}</h3>
                 <p className="mb-6 text-3xl font-bold text-foreground md:text-5xl">
                     <span className={clsx({ "text-[#54eded]": highlight })}>
@@ -34,7 +34,7 @@ const PricingColumn: React.FC<Props> = ({ tier, highlight }: Props) => {
                         "w-full rounded-full bg-[#54eded] px-4 py-3 text-white transition-colors hover:bg-[#47d7d7] sm:text-primary"
                     )}
                 >
-                    <div className="text-xs">
+                    <div className="text-xs text-primary">
                         Iniciar onboarding
                     </div>
                     <div className="-mt-1 font-sans text-xl font-semibold">

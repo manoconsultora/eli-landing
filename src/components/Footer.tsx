@@ -14,14 +14,11 @@ const Footer: React.FC = () => {
             <div className="footer-grid absolute inset-0 -z-10" />
             <div className="max-w-7xl w-full mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-10">
                 <div>
-                    <Link href="/" className="flex items-center gap-2">
-                    <Image src="/images/eli-logo.svg" alt="ELI Consorcios" width={28} height={28} className="min-w-fit h-5 w-5 md:h-7 md:w-7" />
-                        <h3 className="manrope text-xl font-semibold cursor-pointer">
-                            {siteDetails.siteName}
-                        </h3>
+                    <Link href="/" className="flex items-center">
+                    <Image src="/images/logo_eli_yw.svg" alt="ELI Consorcios" width={56} height={56} className="min-w-fit h-12 w-12 md:h-7 md:w-7" />
                     </Link>
                     <p className="mt-3.5 max-w-sm text-secondary/72">
-                        {footerDetails.subheading}
+                        Eli Desk - Centro de Operaciones para Administradores de Consorcios.
                     </p>
                 </div>
                 <div>
