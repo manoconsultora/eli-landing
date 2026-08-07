@@ -2,7 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import React from 'react';
 
-import { siteDetails } from '@/data/siteDetails';
 import { footerDetails } from '@/data/footer';
 import { getPlatformIconByName } from '@/utils';
 
@@ -59,23 +58,33 @@ const Footer: React.FC = () => {
                 </div>
             </div>
             <div className="mt-8 px-6 pt-8 text-center text-primary/72">
-    <p>
-        © {new Date().getFullYear()} {siteDetails.siteName}. Todos los derechos reservados.
-    </p>
-
-    <p className="mt-2 text-sm text-primary/50">
-        Un producto de{" "}
-        <a
-            href="https://ma-no.work"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline"
-        >
-            MANO DIGITAL CONSULTING
-        </a>
-        .
-    </p>
-</div>
+                <p className="font-semibold text-primary">ELI Desk ™ {new Date().getFullYear()}</p>
+                <p className="mt-2">Administración Inteligente de Consorcios</p>
+                <p className="mt-2 text-sm text-primary/50">
+                    Powered by{" "}
+                    <a
+                        href="https://ma-no.work"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline"
+                    >
+                        MANOBOTS™
+                    </a>{" "}
+                    | Todos los derechos reservados.
+                </p>
+                <p className="mt-2 text-sm text-primary/50">
+                    Un producto de{" "}
+                    <a
+                        href="https://ma-no.work/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline"
+                    >
+                        MANO DIGITAL CONSULTING
+                    </a>
+                    .
+                </p>
+            </div>
         </footer>
     );
 };

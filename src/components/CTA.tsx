@@ -331,9 +331,23 @@ const CTA: React.FC = () => {
                         </div>
                     </div>
 
-                    <p className="mt-6 text-center text-sm text-primary/58">
-                        © 2026 ELI Consorcios. Todos los derechos reservados.
-                    </p>
+                    <div className="mt-6 text-center text-sm text-primary/58">
+                        <p className="font-semibold text-primary">ELI Desk ™ 2026</p>
+                        <p className="mt-1">Administración Inteligente de Consorcios</p>
+                        <p className="mt-1">Powered by MANOBOTS™ | Todos los derechos reservados.</p>
+                        <p className="mt-1">
+                            Un producto de{" "}
+                            <a
+                                href="https://ma-no.work/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline"
+                            >
+                                MANO DIGITAL CONSULTING
+                            </a>
+                            .
+                        </p>
+                    </div>
                 </div>
             </div>
         </section>
