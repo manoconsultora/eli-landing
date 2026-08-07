@@ -28,9 +28,9 @@ const Pricing: React.FC = () => {
                 <div className="flex items-start gap-2">
                     <FiInfo className="mt-0.5 shrink-0 text-secondary" />
                     <p>
-                        Todos los planes incluyen la implementación inicial. ELI comienza a operar inmediatamente mediante Telegram,
-                        mientras realizamos el onboarding del canal oficial de WhatsApp Business. Una vez aprobado por Meta,
-                        la migración se realiza de forma transparente y sin perder información.
+                        Todos los planes incluyen la implementación inicial y un onboarding de 4 semanas.
+                        Durante ese período configuramos ELI, ordenamos la información clave y ajustamos la operación
+                        para dejar el servicio en marcha.
                     </p>
                 </div>
 
@@ -38,7 +38,7 @@ const Pricing: React.FC = () => {
                     <FiInfo className="mt-0.5 shrink-0 text-secondary" />
                     <p>
                         La contratación es directa: abonás el primer mes y el segundo queda sin cargo para amortizar las
-                        4 semanas de onboarding y validación del canal oficial.
+                        4 semanas de onboarding, configuración y puesta a punto.
                     </p>
                 </div>
             </div>

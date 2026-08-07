@@ -27,8 +27,8 @@ const HomePage: React.FC = () => {
 
         <Section
           id="testimonials"
-          title="Implementación"
-          description="Nos ocupamos de la puesta en marcha para que puedas comenzar a usar ELI desde el primer día."
+          title="Nosotros nos encargamos de todo."
+          description="Incorporamos reglamentos, documentación y datos del consorcio para que puedas concentrarte en administrar el consorcio, no en configurar tecnología."
         >
           <Testimonials />
         </Section>

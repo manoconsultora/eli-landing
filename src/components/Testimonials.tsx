@@ -4,15 +4,15 @@ import { testimonials } from '@/data/testimonials';
 const Testimonials: React.FC = () => {
     const accentStyles = [
         {
-            badge: "bg-secondary/14 text-secondary",
+            badge: "text-primary",
             card: "shadow-secondary/10",
         },
         {
-            badge: "bg-primary/10 text-primary",
+            badge: "text-primary",
             card: "shadow-primary/10",
         },
         {
-            badge: "bg-foreground-accent/12 text-foreground-accent",
+            badge: "text-primary",
             card: "shadow-primary/8",
         },
     ];
@@ -29,7 +29,7 @@ const Testimonials: React.FC = () => {
                         className={`rounded-2xl bg-white p-6 shadow-sm transition-transform duration-300 hover:-translate-y-1 ${accent.card}`}
                     >
                         <div className="flex items-center mb-5">
-                            <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${accent.badge}`}>
+                            <div className={`flex h-10 w-10 items-center justify-center ${accent.badge}`}>
                                 <Icon className="h-7 w-7" strokeWidth={2} />
                             </div>
 

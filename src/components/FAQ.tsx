@@ -26,11 +26,11 @@ const FAQ: React.FC = () => {
                             <Disclosure>
                                 {({ open }) => (
                                     <>
-                                        <DisclosureButton className="flex w-full items-center justify-between border-t border-surface/90 px-4 pt-7 text-left text-lg">
-                                            <span className="text-2xl font-semibold text-foreground">{faq.question}</span>
+                                        <DisclosureButton className="flex w-full items-center justify-between border-t border-surface/90 px-4 pt-6 text-left text-base">
+                                            <span className="text-xl font-semibold text-foreground sm:text-[1.35rem]">{faq.question}</span>
                                             {open ? <BiMinus className="w-5 h-5 text-secondary" /> : <BiPlus className="w-5 h-5 text-secondary" />}
                                         </DisclosureButton>
-                                        <DisclosurePanel className="px-4 pt-4 pb-2 text-foreground-accent">
+                                        <DisclosurePanel className="px-4 pt-3 pb-2 text-sm leading-7 text-foreground-accent sm:text-base">
                                             {faq.answer}
                                         </DisclosurePanel>
                                     </>

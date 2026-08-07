@@ -4,26 +4,26 @@ import {
     ArrowRightLeft,
   } from "lucide-react";
   
-  export const testimonials = [
+export const testimonials = [
     {
-      name: "Activación inmediata",
-      role: "Desde el primer día",
+      name: "Configuración inicial",
+      role: "Adaptado a tu administración",
       message:
-        "ELI comienza a operar inmediatamente mediante un bot de Telegram configurado para tu administración.",
+        "Creamos tu espacio de trabajo y adaptamos ELI a las necesidades de tu administración.",
       icon: Rocket,
     },
     {
-      name: "Onboarding WhatsApp",
-      role: "Nos ocupamos de todo",
+      name: "Carga de información",
+      role: "Todo listo desde el inicio",
       message:
-        "Configuramos Meta Business, la cuenta oficial, el número y todo el proceso de aprobación de WhatsApp Business.",
+        "Incorporamos reglamentos, documentación y datos del consorcio para que ELI pueda responder desde el primer día.",
       icon: MessageCircle,
     },
     {
-      name: "Migración transparente",
-      role: "Sin perder información",
+      name: "Puesta en marcha",
+      role: "Acompañamiento real",
       message:
-        "Una vez aprobado por Meta, ELI migra automáticamente de Telegram a WhatsApp manteniendo el historial y la configuración.",
+        "Te acompañamos durante la implementación y dejamos todo listo para comenzar a atender consultas y reclamos.",
       icon: ArrowRightLeft,
     },
   ];

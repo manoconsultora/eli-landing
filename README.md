@@ -64,6 +64,43 @@ Before starting, make sure you have the following installed:
 4. **Replace favicon**: Add your icon to `/src/app/favicon.ico`.
 5. **Add images**: Update `public/images` for Open Graph metadata (e.g., `og-image.jpg`, `twitter-image.jpg`).
 
+### n8n Webhook Integration
+
+The ELI CTA module sends submissions to `/api/eli-intake`, which forwards the payload to an n8n workflow.
+
+Configure these environment variables:
+
+```bash
+N8N_ELI_WEBHOOK_URL="https://your-n8n-instance/webhook/eli-cta-chat-modulo-landing"
+N8N_ELI_WEBHOOK_SECRET="optional-shared-secret"
+```
+
+Payload sent to n8n:
+
+```json
+{
+  "source": "landing-cta",
+  "prompt": "Consulta escrita por el usuario",
+  "category": "Soy Administrador",
+  "email": "persona@dominio.com",
+  "submittedAt": "2026-08-07T15:00:00.000Z",
+  "path": "/api/eli-intake",
+  "referrer": "http://localhost:3000/",
+  "userAgent": "Mozilla/5.0 ..."
+}
+```
+
+Recommended n8n pattern:
+
+1. `Webhook`
+2. `Code` or `Set` for normalization
+3. `Switch` by visitor type
+4. Internal notification email
+5. Automatic confirmation email
+6. `Respond to Webhook`
+
+An importable workflow is included at `n8n/CTA-ChatModulo-Landing.json`.
+
 ---
 
 ## Deploying on Vercel

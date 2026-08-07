@@ -1,0 +1,269 @@
+{
+  "name": "CTA-ChatModulo-Landing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eli-cta-chat-modulo-landing",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook CTA Chat",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        220,
+        300
+      ],
+      "webhookId": "eli-cta-chat-modulo-landing"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst prompt = (input.prompt ?? '').trim();\nconst category = (input.category ?? '').trim();\nconst email = (input.email ?? '').trim().toLowerCase();\nconst allowed = ['Soy Administrador', 'Soy vecino', 'Soy inversor'];\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n\nif (!prompt) {\n  throw new Error('La consulta está vacía.');\n}\n\nif (!allowed.includes(category)) {\n  throw new Error('Tipo de visitante inválido.');\n}\n\nif (!emailRegex.test(email)) {\n  throw new Error('Email inválido.');\n}\n\nconst preview = prompt.replace(/\\s+/g, ' ').slice(0, 240);\n\nreturn [{\n  json: {\n    source: input.source ?? 'landing-cta',\n    prompt,\n    category,\n    email,\n    preview,\n    submittedAt: input.submittedAt ?? new Date().toISOString(),\n    referrer: input.referrer ?? $json.headers?.referer ?? '',\n    userAgent: input.userAgent ?? $json.headers?.['user-agent'] ?? '',\n    internalRecipients: ['martin@ma-no.work'],\n    confirmationSubject: 'ELI DESK - recibimos tu mensaje'\n  }\n}];"
+      },
+      "id": "2",
+      "name": "Normalizar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.category}}",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "value2": "Soy Administrador"
+            },
+            {
+              "operation": "equal",
+              "value2": "Soy vecino"
+            },
+            {
+              "operation": "equal",
+              "value2": "Soy inversor"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "3",
+      "name": "Switch Tipo Visitante",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = { ...$json };\nconst escapeHtml = (value = '') => String(value)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\\\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\nconst safePrompt = escapeHtml(item.prompt);\nconst safePreview = escapeHtml(item.preview);\nconst safeEmail = escapeHtml(item.email);\nconst safeDate = escapeHtml(item.submittedAt);\nconst logoUrl = 'https://eli.ma-no.work/images/logo_eli.svg';\nconst footerHtml = `\n  <div style=\"padding:18px 28px 26px;text-align:center;border-top:1px solid #eef2f7;\">\n    <div style=\"font-size:12px;line-height:1.7;color:#7a819f;\">© 2026 ELI Consorcios. Todos los derechos reservados.</div>\n    <div style=\"margin-top:6px;font-size:12px;line-height:1.7;color:#7a819f;\">Un producto de <span style=\"font-weight:800;letter-spacing:0.08em;color:#2f3159;\">MANO DIGITAL CONSULTING</span></div>\n  </div>`;\nitem.visitorType = 'Administrador';\nitem.routeLabel = 'Consulta comercial de administrador';\nitem.internalSubject = 'ELI DESK - nuevo mensaje desde landing - Administrador';\nitem.internalHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.2;color:#2f3159;\">Nuevo mensaje desde la landing</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;margin-bottom:22px;background:#f8fafc;border:1px solid #e7ebf3;border-radius:18px;overflow:hidden;\">\n          <tr>\n            <td style=\"padding:16px 18px 10px;font-size:13px;color:#6b728b;width:180px;\">Tipo de visitante</td>\n            <td style=\"padding:16px 18px 10px;font-size:14px;font-weight:700;color:#2f3159;\">${item.visitorType}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 10px;font-size:13px;color:#6b728b;\">Email</td>\n            <td style=\"padding:0 18px 10px;font-size:14px;color:#2f3159;\">${safeEmail}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 16px;font-size:13px;color:#6b728b;\">Fecha</td>\n            <td style=\"padding:0 18px 16px;font-size:14px;color:#2f3159;\">${safeDate}</td>\n          </tr>\n        </table>\n        <div style=\"margin:0 0 18px;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Preview</div>\n          <div style=\"font-size:16px;line-height:1.6;color:#2f3159;\">${safePreview}</div>\n        </div>\n        <div style=\"padding:18px 20px;border-radius:18px;background:#eef8ff;border:1px solid #dcecff;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#4f6388;margin-bottom:8px;\">Mensaje completo</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePrompt}</div>\n        </div>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nitem.confirmationHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.15;color:#2f3159;\">Recibimos tu mensaje</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Hola,</p>\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Recibimos tu consulta como <strong>${item.visitorType}</strong>. A la brevedad será revisada y respondida por nuestro equipo.</p>\n        <div style=\"margin:22px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Tu mensaje</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePreview}</div>\n        </div>\n        <p style=\"margin:0 0 12px;font-size:15px;line-height:1.7;color:#4f5675;\">Si necesitás ampliar la información, podés responder este mismo correo.</p>\n        <p style=\"margin:22px 0 0;font-size:15px;line-height:1.7;color:#2f3159;\">Gracias por contactarte con <strong>ELI Desk</strong>.</p>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nreturn [{ json: item }];"
+      },
+      "id": "4",
+      "name": "Preparar Administrador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = { ...$json };\nconst escapeHtml = (value = '') => String(value)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\\\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\nconst safePrompt = escapeHtml(item.prompt);\nconst safePreview = escapeHtml(item.preview);\nconst safeEmail = escapeHtml(item.email);\nconst safeDate = escapeHtml(item.submittedAt);\nconst logoUrl = 'https://eli.ma-no.work/images/logo_eli.svg';\nconst footerHtml = `\n  <div style=\"padding:18px 28px 26px;text-align:center;border-top:1px solid #eef2f7;\">\n    <div style=\"font-size:12px;line-height:1.7;color:#7a819f;\">© 2026 ELI Consorcios. Todos los derechos reservados.</div>\n    <div style=\"margin-top:6px;font-size:12px;line-height:1.7;color:#7a819f;\">Un producto de <span style=\"font-weight:800;letter-spacing:0.08em;color:#2f3159;\">MANO DIGITAL CONSULTING</span></div>\n  </div>`;\nitem.visitorType = 'Vecino';\nitem.routeLabel = 'Consulta de vecino';\nitem.internalSubject = 'ELI DESK - nuevo mensaje desde landing - Vecino';\nitem.internalHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.2;color:#2f3159;\">Nuevo mensaje desde la landing</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;margin-bottom:22px;background:#f8fafc;border:1px solid #e7ebf3;border-radius:18px;overflow:hidden;\">\n          <tr>\n            <td style=\"padding:16px 18px 10px;font-size:13px;color:#6b728b;width:180px;\">Tipo de visitante</td>\n            <td style=\"padding:16px 18px 10px;font-size:14px;font-weight:700;color:#2f3159;\">${item.visitorType}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 10px;font-size:13px;color:#6b728b;\">Email</td>\n            <td style=\"padding:0 18px 10px;font-size:14px;color:#2f3159;\">${safeEmail}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 16px;font-size:13px;color:#6b728b;\">Fecha</td>\n            <td style=\"padding:0 18px 16px;font-size:14px;color:#2f3159;\">${safeDate}</td>\n          </tr>\n        </table>\n        <div style=\"margin:0 0 18px;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Preview</div>\n          <div style=\"font-size:16px;line-height:1.6;color:#2f3159;\">${safePreview}</div>\n        </div>\n        <div style=\"padding:18px 20px;border-radius:18px;background:#eef8ff;border:1px solid #dcecff;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#4f6388;margin-bottom:8px;\">Mensaje completo</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePrompt}</div>\n        </div>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nitem.confirmationHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.15;color:#2f3159;\">Recibimos tu mensaje</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Hola,</p>\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Recibimos tu consulta como <strong>${item.visitorType}</strong>. Gracias por escribirnos. A la brevedad será revisada y respondida por nuestro equipo.</p>\n        <div style=\"margin:22px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Tu mensaje</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePreview}</div>\n        </div>\n        <p style=\"margin:0 0 12px;font-size:15px;line-height:1.7;color:#4f5675;\">Si necesitás ampliar la información, podés responder este mismo correo.</p>\n        <p style=\"margin:22px 0 0;font-size:15px;line-height:1.7;color:#2f3159;\">Gracias por contactarte con <strong>ELI Desk</strong>.</p>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nreturn [{ json: item }];"
+      },
+      "id": "5",
+      "name": "Preparar Vecino",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = { ...$json };\nconst escapeHtml = (value = '') => String(value)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\\\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\nconst safePrompt = escapeHtml(item.prompt);\nconst safePreview = escapeHtml(item.preview);\nconst safeEmail = escapeHtml(item.email);\nconst safeDate = escapeHtml(item.submittedAt);\nconst logoUrl = 'https://eli.ma-no.work/images/logo_eli.svg';\nconst footerHtml = `\n  <div style=\"padding:18px 28px 26px;text-align:center;border-top:1px solid #eef2f7;\">\n    <div style=\"font-size:12px;line-height:1.7;color:#7a819f;\">© 2026 ELI Consorcios. Todos los derechos reservados.</div>\n    <div style=\"margin-top:6px;font-size:12px;line-height:1.7;color:#7a819f;\">Un producto de <span style=\"font-weight:800;letter-spacing:0.08em;color:#2f3159;\">MANO DIGITAL CONSULTING</span></div>\n  </div>`;\nitem.visitorType = 'Inversor';\nitem.routeLabel = 'Consulta de inversor';\nitem.internalSubject = 'ELI DESK - nuevo mensaje desde landing - Inversor';\nitem.internalHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.2;color:#2f3159;\">Nuevo mensaje desde la landing</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;margin-bottom:22px;background:#f8fafc;border:1px solid #e7ebf3;border-radius:18px;overflow:hidden;\">\n          <tr>\n            <td style=\"padding:16px 18px 10px;font-size:13px;color:#6b728b;width:180px;\">Tipo de visitante</td>\n            <td style=\"padding:16px 18px 10px;font-size:14px;font-weight:700;color:#2f3159;\">${item.visitorType}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 10px;font-size:13px;color:#6b728b;\">Email</td>\n            <td style=\"padding:0 18px 10px;font-size:14px;color:#2f3159;\">${safeEmail}</td>\n          </tr>\n          <tr>\n            <td style=\"padding:0 18px 16px;font-size:13px;color:#6b728b;\">Fecha</td>\n            <td style=\"padding:0 18px 16px;font-size:14px;color:#2f3159;\">${safeDate}</td>\n          </tr>\n        </table>\n        <div style=\"margin:0 0 18px;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Preview</div>\n          <div style=\"font-size:16px;line-height:1.6;color:#2f3159;\">${safePreview}</div>\n        </div>\n        <div style=\"padding:18px 20px;border-radius:18px;background:#eef8ff;border:1px solid #dcecff;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#4f6388;margin-bottom:8px;\">Mensaje completo</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePrompt}</div>\n        </div>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nitem.confirmationHtml = `\n  <div style=\"background:#f5f7fb;margin:0;padding:32px 20px;font-family:Arial,sans-serif;color:#2f3159;\">\n    <div style=\"max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf3;border-radius:24px;overflow:hidden;box-shadow:0 10px 30px rgba(47,49,89,0.08);\">\n      <div style=\"padding:28px 28px 18px;text-align:center;background:#ffffff;\">\n        <img src=\"${logoUrl}\" alt=\"ELI Desk\" width=\"72\" height=\"72\" style=\"display:block;margin:0 auto 12px;\" />\n        <div style=\"font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7a819f;\">ELI Desk</div>\n        <h1 style=\"margin:10px 0 0;font-size:28px;line-height:1.15;color:#2f3159;\">Recibimos tu mensaje</h1>\n      </div>\n      <div style=\"padding:0 28px 28px;\">\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Hola,</p>\n        <p style=\"margin:0 0 16px;font-size:16px;line-height:1.7;\">Recibimos tu consulta como <strong>${item.visitorType}</strong>. Nuestro equipo la revisará y te responderá a la brevedad.</p>\n        <div style=\"margin:22px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e7ebf3;\">\n          <div style=\"font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7a819f;margin-bottom:8px;\">Tu mensaje</div>\n          <div style=\"font-size:15px;line-height:1.7;color:#2f3159;white-space:pre-wrap;\">${safePreview}</div>\n        </div>\n        <p style=\"margin:0 0 12px;font-size:15px;line-height:1.7;color:#4f5675;\">Si necesitás ampliar la información, podés responder este mismo correo.</p>\n        <p style=\"margin:22px 0 0;font-size:15px;line-height:1.7;color:#2f3159;\">Gracias por contactarte con <strong>ELI Desk</strong>.</p>\n      </div>\n      ${footerHtml}\n    </div>\n  </div>`;\nreturn [{ json: item }];"
+      },
+      "id": "6",
+      "name": "Preparar Inversor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'ELI Desk <no-reply@manobot.ai>'}}",
+        "toEmail": "={{$json.internalRecipients.join(', ')}}",
+        "subject": "={{$json.internalSubject}}",
+        "emailFormat": "html",
+        "message": "={{$json.internalHtml}}",
+        "options": {}
+      },
+      "id": "7",
+      "name": "Enviar Mail Interno",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'ELI Desk <no-reply@manobot.ai>'}}",
+        "toEmail": "={{$json.email}}",
+        "subject": "={{$json.confirmationSubject}}",
+        "emailFormat": "html",
+        "message": "={{$json.confirmationHtml}}",
+        "options": {}
+      },
+      "id": "8",
+      "name": "Enviar Acuse de Recibo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Consulta procesada correctamente.",
+        "options": {}
+      },
+      "id": "9",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1700,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook CTA Chat": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Switch Tipo Visitante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Tipo Visitante": {
+      "main": [
+        [
+          {
+            "node": "Preparar Administrador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Vecino",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Inversor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Administrador": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mail Interno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Vecino": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mail Interno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Inversor": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mail Interno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Mail Interno": {
+      "main": [
+        [
+          {
+            "node": "Enviar Acuse de Recibo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Acuse de Recibo": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cta-chatmodulo-landing-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "active": false
+}

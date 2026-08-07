@@ -9,7 +9,7 @@ const BenefitBullet: React.FC<IBenefitBullet> = ({ title, description, icon }: I
             className="flex flex-col items-center mt-8 gap-3 lg:gap-5 lg:flex-row lg:items-start"
             variants={childVariants}
         >
-            <div className="mt-3 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-secondary/12 text-secondary mx-auto lg:mx-0">
+            <div className="mt-3 flex h-10 w-10 flex-shrink-0 items-center justify-center text-primary mx-auto lg:mx-0">
                 {icon}
             </div>
             <div>
