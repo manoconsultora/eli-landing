@@ -1,3 +1,6 @@
+import type { ReactElement } from "react";
+import type { LucideIcon } from "lucide-react";
+
 export interface IMenuItem {
     text: string;
     url: string;
@@ -13,11 +16,13 @@ export interface IBenefit {
 export interface IBenefitBullet {
     title: string;
     description: string;
-    icon: JSX.Element;
+    icon: ReactElement;
 }
 
 export interface IPricing {
     name: string;
+    slug: "core" | "professional" | "scale";
+    action: "onboarding" | "contact";
     price: number | string;
     features: string[];
 }
@@ -26,8 +31,6 @@ export interface IFAQ {
     question: string;
     answer: string;
 }
-import type { LucideIcon } from "lucide-react";
-
 export interface ITestimonial {
     name: string;
     role: string;
@@ -37,7 +40,7 @@ export interface ITestimonial {
 
 export interface IStats {
     title: string;
-    icon: JSX.Element;
+    icon: ReactElement;
     description: string;
 }
 

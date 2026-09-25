@@ -28,17 +28,9 @@ const Pricing: React.FC = () => {
                 <div className="flex items-start gap-2">
                     <FiInfo className="mt-0.5 shrink-0 text-secondary" />
                     <p>
-                        Todos los planes incluyen la implementación inicial y un onboarding de 4 semanas.
-                        Durante ese período configuramos ELI, ordenamos la información clave y ajustamos la operación
-                        para dejar el servicio en marcha.
-                    </p>
-                </div>
-
-                <div className="flex items-start gap-2">
-                    <FiInfo className="mt-0.5 shrink-0 text-secondary" />
-                    <p>
-                        La contratación es directa: abonás el primer mes y el segundo queda sin cargo para amortizar las
-                        4 semanas de onboarding, configuración y puesta a punto.
+                        Todos los planes incluyen la implementación inicial y un onboarding.
+                        Durante ese período configuramos ELI, te acompañamos y ordenamos la información clave
+                        para ajustarla a tu operación y dejar el servicio en marcha.
                     </p>
                 </div>
             </div>

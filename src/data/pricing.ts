@@ -3,7 +3,9 @@ import { IPricing } from "@/types";
 export const tiers: IPricing[] = [
   {
     name: "Core",
-    price: "$90.600",
+    slug: "core",
+    action: "onboarding",
+    price: "$AR 99.999",
     features: [
       "Hasta 2 consorcios",
       "Hasta 100 UF totales",
@@ -18,7 +20,9 @@ export const tiers: IPricing[] = [
   },
   {
     name: "Profesional",
-    price: "$152.000",
+    slug: "professional",
+    action: "onboarding",
+    price: "$AR 155.000",
     features: [
       "Hasta 8 consorcios",
       "Hasta 500 UF totales",
@@ -28,12 +32,14 @@ export const tiers: IPricing[] = [
       "Gestión inteligente de pagos",
       "Reportes y métricas",
       "Panel multiusuario",
-      "Onboarding asistido de 4 semanas",
+      "Onboarding asistido",
       "Soporte prioritario",
     ],
   },
   {
     name: "Escala",
+    slug: "scale",
+    action: "contact",
     price: "Consultar",
     features: [
       "Más de 8 consorcios",

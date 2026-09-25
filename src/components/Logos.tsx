@@ -1,14 +1,6 @@
 const Logos: React.FC = () => {
     return (
-        <section id="logos" className="relative overflow-hidden bg-surface/35 px-5 py-32">
-            <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-6 -top-8 h-16 rounded-full bg-surface/70 blur-3xl sm:hidden"
-            />
-            <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-surface/55 via-surface/24 to-transparent sm:hidden"
-            />
+        <section id="logos" className="relative z-10 -mt-44 overflow-hidden bg-surface px-5 pb-32 pt-16 sm:-mt-28 sm:pt-52">
             <h2 className="text-center text-3xl font-extrabold tracking-tight text-primary sm:text-4xl">
                 La tecnología detrás de ELI.
             </h2>

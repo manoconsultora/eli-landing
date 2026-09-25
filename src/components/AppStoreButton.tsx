@@ -10,19 +10,19 @@ const AppStoreButton = ({ dark }: { dark?: boolean }) => {
         <a
             href={ctaDetails.appStoreUrl}
             className={clsx(
-                "mt-3 flex h-14 min-w-[205px] w-full items-center justify-center rounded-full bg-[#54eded] px-6 text-white shadow-lg shadow-primary/12 transition-all duration-300 hover:bg-[#47d7d7] sm:w-fit sm:text-primary"
+                "flex h-12 min-w-0 w-full items-center justify-center rounded-full bg-[#2346DD] px-3 text-white shadow-lg shadow-primary/12 transition-all duration-300 hover:bg-[#1f3fc7] sm:mt-3 sm:h-14 sm:min-w-[205px] sm:w-fit sm:px-6 sm:text-white"
             )}
         >
-            <div className="mr-3">
-                <Rocket size={28} />
+            <div className="mr-2 sm:mr-3">
+                <Rocket className="h-5 w-5 sm:h-7 sm:w-7" />
             </div>
 
             <div>
-                <div className="text-xs text-primary">
+                <div className="text-[10px] leading-tight text-white sm:text-xs">
                     Iniciar onboarding
                 </div>
-                <div className="-mt-1 font-sans text-xl font-semibold">
-                    Comenzar ahora
+                <div className="-mt-0.5 font-sans text-sm font-semibold leading-tight sm:-mt-1 sm:text-xl">
+                    Comenzar
                 </div>
             </div>
         </a>

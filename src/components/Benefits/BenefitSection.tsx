@@ -30,7 +30,7 @@ const containerVariants: Variants = {
     }
 };
 
-export const childVariants = {
+export const childVariants: Variants = {
     offscreen: {
         opacity: 0,
         x: -50,

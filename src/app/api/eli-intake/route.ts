@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const MAX_PROMPT_LENGTH = 1200;
+const MAX_BODY_LENGTH = 16_000;
 const ALLOWED_CATEGORIES = [
   "Soy Administrador",
   "Soy vecino",
@@ -19,7 +20,23 @@ export async function POST(request: NextRequest) {
   let body: IntakeBody;
 
   try {
-    body = await request.json();
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > MAX_BODY_LENGTH) {
+      return NextResponse.json(
+        { ok: false, message: "La solicitud es demasiado grande." },
+        { status: 413 }
+      );
+    }
+
+    const rawBody = await request.text();
+    if (rawBody.length > MAX_BODY_LENGTH) {
+      return NextResponse.json(
+        { ok: false, message: "La solicitud es demasiado grande." },
+        { status: 413 }
+      );
+    }
+
+    body = JSON.parse(rawBody) as IntakeBody;
   } catch {
     return NextResponse.json(
       { ok: false, message: "No pudimos interpretar la consulta enviada." },
@@ -66,13 +83,14 @@ export async function POST(request: NextRequest) {
   }
 
   const webhookUrl = process.env.N8N_ELI_WEBHOOK_URL;
+  const webhookSecret = process.env.N8N_ELI_WEBHOOK_SECRET;
 
-  if (!webhookUrl) {
+  if (!webhookUrl || !webhookSecret) {
     return NextResponse.json(
       {
         ok: false,
         message:
-          "Falta configurar N8N_ELI_WEBHOOK_URL para conectar este módulo con n8n.",
+          "El módulo de consultas no está disponible temporalmente.",
       },
       { status: 503 }
     );
@@ -83,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = {
-      source: body.source ?? "landing-cta",
+      source: "landing-cta",
       prompt,
       category,
       email,
@@ -98,9 +116,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "content-type": "application/json",
         "x-eli-source": "landing-cta",
-        ...(process.env.N8N_ELI_WEBHOOK_SECRET
-          ? { "x-eli-secret": process.env.N8N_ELI_WEBHOOK_SECRET }
-          : {}),
+        "x-eli-secret": webhookSecret,
       },
       body: JSON.stringify(payload),
       cache: "no-store",
@@ -108,31 +124,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const details = await response.text();
-
       return NextResponse.json(
         {
           ok: false,
-          message:
-            "n8n recibió la solicitud pero devolvió un error al procesarla.",
-          details: details || response.statusText,
+          message: "No pudimos procesar la consulta en este momento.",
         },
         { status: 502 }
       );
     }
 
-    let data: unknown = null;
-
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
-
     return NextResponse.json({
       ok: true,
       message: "Consulta enviada correctamente a la automatización.",
-      data,
     });
   } catch (error) {
     const message =

@@ -19,7 +19,7 @@ const Header: React.FC = () => {
     return (
         <header className="bg-transparent fixed top-0 left-0 right-0 md:absolute z-[120] mx-auto w-full">
             <Container className="!px-4">
-                <nav className="relative z-[120] mx-auto mt-3 flex w-full items-center justify-between gap-3 overflow-hidden rounded-full bg-background/88 px-5 py-2 text-foreground shadow-xl shadow-primary/12 backdrop-blur md:mt-6 md:max-w-6xl md:py-3">
+                <nav className="relative z-[120] mx-auto mt-3 flex w-full items-center justify-between gap-3 px-5 py-2 text-foreground md:mt-6 md:max-w-6xl md:py-3">
                     {/* Logo */}
                     <Link href="/" className="flex min-w-0 flex-1 items-center overflow-hidden pr-2">
                         <Image src="/images/logo_eli.svg" alt="ELI Consorcios" width={72} height={72} className="h-16 w-16 shrink-0 md:h-20 md:w-20" />
@@ -35,7 +35,7 @@ const Header: React.FC = () => {
                             </li>
                         ))}
                         <li>
-                            <Link href="#cta" className="rounded-full bg-[#54eded] px-8 py-3 font-semibold text-primary transition-colors hover:bg-[#47d7d7]">
+                            <Link href="#cta" className="rounded-full bg-[#2346DD] px-8 py-3 font-semibold text-white transition-colors hover:bg-[#1f3fc7]">
                                 Consulta sin Cargo!
                             </Link>
                         </li>
