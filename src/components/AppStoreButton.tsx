@@ -1,13 +1,14 @@
 import React from 'react'
 import clsx from 'clsx'
 import { Rocket } from "lucide-react";
+import Link from "next/link";
 
 import { ctaDetails } from '@/data/cta'
 
 const AppStoreButton = ({ dark }: { dark?: boolean }) => {
     void dark;
     return (
-        <a
+        <Link
             href={ctaDetails.appStoreUrl}
             className={clsx(
                 "flex h-12 min-w-0 w-full items-center justify-center rounded-full bg-[#2346DD] px-3 text-white shadow-lg shadow-primary/12 transition-all duration-300 hover:bg-[#1f3fc7] sm:mt-3 sm:h-14 sm:min-w-[205px] sm:w-fit sm:px-6 sm:text-white"
@@ -25,7 +26,7 @@ const AppStoreButton = ({ dark }: { dark?: boolean }) => {
                     Comenzar
                 </div>
             </div>
-        </a>
+        </Link>
     )
 }
 

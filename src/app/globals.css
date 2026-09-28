@@ -307,6 +307,18 @@ h1, h2, h3, h4, h5, h6 {
   left: 58%;
 }
 
+.signup-wizard-thruster {
+  top: 96%;
+  width: clamp(3px, 9%, 7px);
+  height: clamp(11px, 34%, 22px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-wizard-thruster {
+    animation: none;
+  }
+}
+
 .eli-smoke {
   position: absolute;
   display: block;

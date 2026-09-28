@@ -19,6 +19,6 @@ export const ctaDetails = {
         'Buscá el reglamento de mascotas y prepará una respuesta para el vecino.',
         'Indicame el estado de expensas y pagos pendientes de la unidad 3B.',
     ],
-    appStoreUrl: '#',
+    appStoreUrl: '/onboarding',
     googlePlayUrl: '#'
 }
