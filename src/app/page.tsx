@@ -8,37 +8,43 @@ import Container from "@/components/Container";
 import Section from "@/components/Section";
 import Stats from "@/components/Stats";
 import CTA from "@/components/CTA";
+import Footer from "@/components/Footer";
+import Header from "@/components/Header";
 
 const HomePage: React.FC = () => {
   return (
     <>
-      <Hero />
-      <Logos />
-      <Container>
-        <Benefits />
+      <Header />
+      <main>
+        <Hero />
+        <Logos />
+        <Container>
+          <Benefits />
 
-        <Section
-          id="pricing"
-          title="Planes"
-          description="Desde un edificio hasta múltiples consorcios, ELI crece con vos."
-        >
-          <Pricing />
-        </Section>
+          <Section
+            id="pricing"
+            title="Planes"
+            description="Desde un edificio hasta múltiples consorcios, ELI crece con vos."
+          >
+            <Pricing />
+          </Section>
 
-        <Section
-          id="testimonials"
-          title="Nosotros nos encargamos de todo."
-          description="Incorporamos reglamentos, documentación y datos del consorcio para que puedas concentrarte en administrar el consorcio, no en configurar tecnología."
-        >
-          <Testimonials />
-        </Section>
+          <Section
+            id="testimonials"
+            title="Nosotros nos encargamos de todo."
+            description="Incorporamos reglamentos, documentación y datos del consorcio para que puedas concentrarte en administrar el consorcio, no en configurar tecnología."
+          >
+            <Testimonials />
+          </Section>
 
-        <FAQ />
+          <FAQ />
 
-        <Stats />
-        
-        <CTA />
-      </Container>
+          <Stats />
+
+          <CTA />
+        </Container>
+      </main>
+      <Footer />
     </>
   );
 };
