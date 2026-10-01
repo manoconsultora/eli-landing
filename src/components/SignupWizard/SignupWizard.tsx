@@ -8,7 +8,6 @@ import {
   Check,
   CheckCircle2,
   Clock3,
-  CreditCard,
   LoaderCircle,
   ShieldCheck,
   Sparkles,
@@ -21,7 +20,9 @@ import {
   type FormEvent,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -83,10 +84,34 @@ export default function SignupWizard() {
   const [deskNotice, setDeskNotice] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [checkoutNonce, setCheckoutNonce] = useState("");
+  const [step3View, setStep3View] = useState<"review" | "payment">("review");
+  const [hasOpenedPayment, setHasOpenedPayment] = useState(false);
+  const [step3ModuleHeight, setStep3ModuleHeight] = useState<number>();
+  const step3ReviewContentRef = useRef<HTMLDivElement>(null);
+  const step3PaymentContentRef = useRef<HTMLDivElement>(null);
   const [payment, setPayment] = useState<PaymentSession>();
   const [paymentError, setPaymentError] = useState<string>();
   const paymentAttemptId = payment?.attemptId;
   const paymentStatusToken = payment?.statusToken;
+
+  useLayoutEffect(() => {
+    if (step !== 2) return;
+
+    const content = step3View === "review"
+      ? step3ReviewContentRef.current
+      : step3PaymentContentRef.current;
+    if (!content) return;
+
+    const updateHeight = () => {
+      const nextHeight = content.scrollHeight;
+      setStep3ModuleHeight((current) => current === nextHeight ? current : nextHeight);
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hasOpenedPayment, step, step3View]);
   const paymentActive = payment?.active;
 
   useEffect(() => {
@@ -100,6 +125,7 @@ export default function SignupWizard() {
       const parsed = JSON.parse(saved) as {
         data?: Partial<WizardData>;
         step?: number;
+        eliSignupSubstep?: "review" | "payment";
         checkoutNonce?: string;
         payment?: PaymentSession;
       };
@@ -112,6 +138,8 @@ export default function SignupWizard() {
           : {}),
       }));
       setCheckoutNonce(parsed.checkoutNonce || window.crypto.randomUUID());
+      setStep3View(parsed.eliSignupSubstep === "payment" ? "payment" : "review");
+      setHasOpenedPayment(parsed.eliSignupSubstep === "payment");
       setPayment(parsed.payment);
 
       if (
@@ -124,6 +152,8 @@ export default function SignupWizard() {
     } catch {
       window.sessionStorage.removeItem(storageKey);
       setCheckoutNonce(window.crypto.randomUUID());
+      setStep3View("review");
+      setHasOpenedPayment(false);
     } finally {
       setHydrated(true);
     }
@@ -133,9 +163,9 @@ export default function SignupWizard() {
     if (!hydrated) return;
     window.sessionStorage.setItem(
       storageKey,
-      JSON.stringify({ data, step, checkoutNonce, payment }),
+      JSON.stringify({ data, step, eliSignupSubstep: step3View, checkoutNonce, payment }),
     );
-  }, [checkoutNonce, data, hydrated, payment, step]);
+  }, [checkoutNonce, data, hydrated, payment, step, step3View]);
 
   useEffect(() => {
     if (step !== 3 || !paymentAttemptId || !paymentStatusToken || paymentActive) return;
@@ -174,12 +204,20 @@ export default function SignupWizard() {
     if (!hydrated) return;
 
     const currentState = window.history.state as
-      | { eliSignupStep?: number }
+      | { eliSignupStep?: number; eliSignupSubstep?: "review" | "payment" }
       | null;
 
-    if (currentState?.eliSignupStep !== step) {
+    const expectedSubstep = step === 2 ? step3View : undefined;
+    if (
+      currentState?.eliSignupStep !== step ||
+      currentState?.eliSignupSubstep !== expectedSubstep
+    ) {
       window.history.replaceState(
-        { ...currentState, eliSignupStep: step },
+        {
+          ...currentState,
+          eliSignupStep: step,
+          eliSignupSubstep: expectedSubstep,
+        },
         "",
       );
     }
@@ -190,12 +228,20 @@ export default function SignupWizard() {
 
       setDirection(nextStep < step ? -1 : 1);
       setStep(nextStep);
+      setStep3View(
+        nextStep === 2 && event.state?.eliSignupSubstep === "payment"
+          ? "payment"
+          : "review",
+      );
+      if (nextStep === 2 && event.state?.eliSignupSubstep === "payment") {
+        setHasOpenedPayment(true);
+      }
       setAttempted(false);
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [hydrated, step]);
+  }, [hydrated, step, step3View]);
 
   const selectedPlan = useMemo(
     () => tiers.find((tier) => tier.slug === data.plan) ?? tiers[0],
@@ -227,9 +273,35 @@ export default function SignupWizard() {
 
     setDirection(nextDirection);
     setStep(nextStep);
+    setStep3View("review");
     setAttempted(false);
     window.history.pushState(
-      { ...window.history.state, eliSignupStep: nextStep },
+      {
+        ...window.history.state,
+        eliSignupStep: nextStep,
+        eliSignupSubstep: nextStep === 2 ? "review" : undefined,
+      },
+      "",
+    );
+  }
+
+  function continueToPayment() {
+    setHasOpenedPayment(true);
+    setStep3View("payment");
+    window.history.pushState(
+      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
+      "",
+    );
+  }
+
+  function returnToPayment() {
+    setHasOpenedPayment(true);
+    setDirection(-1);
+    setStep(2);
+    setStep3View("payment");
+    setAttempted(false);
+    window.history.pushState(
+      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
       "",
     );
   }
@@ -290,10 +362,12 @@ export default function SignupWizard() {
       <div className="mx-auto grid min-h-dvh w-full max-w-[1600px] grid-cols-1 overflow-hidden bg-white lg:min-h-[calc(100dvh-2rem)] lg:grid-cols-[minmax(320px,39%)_minmax(0,61%)] lg:gap-3 lg:rounded-[36px] lg:bg-[#E9EEFF] xl:min-h-[calc(100dvh-2.5rem)] xl:grid-cols-[minmax(360px,38%)_minmax(0,62%)] xl:gap-4">
         <EditorialPanel step={step} />
 
-        <section className="relative -mt-7 flex min-h-[calc(100dvh-12.5rem)] flex-col overflow-hidden rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-7 sm:px-8 lg:mt-0 lg:min-h-0 lg:rounded-[32px] lg:px-10 lg:pb-8 lg:pt-8 xl:px-14 xl:pb-10 xl:pt-10">
-          <Progress currentStep={step} />
+        <section className="relative -mt-7 flex min-h-[calc(100dvh-12.5rem)] flex-col overflow-hidden rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-7 sm:px-8 lg:mt-0 lg:min-h-0 lg:rounded-[32px] lg:px-10 lg:pb-8 lg:pt-8 xl:px-14 xl:pb-6 xl:pt-10">
+          <div className={step === 4 ? "relative z-10" : ""}>
+            <Progress currentStep={step} />
+          </div>
 
-          <div className="relative mx-auto flex w-full max-w-[760px] flex-1 flex-col pt-8 sm:pt-10 lg:pt-12">
+          <div className={`relative mx-auto flex w-full flex-1 flex-col ${step === 4 ? "z-10" : ""} ${step === 2 ? "max-w-[980px] pt-4 sm:pt-5 lg:pt-4" : "max-w-[760px] pt-8 sm:pt-10 lg:pt-12"}`}>
             <AnimatePresence initial={false} custom={direction} mode="wait">
               <motion.div
                 key={step}
@@ -420,101 +494,147 @@ export default function SignupWizard() {
                 )}
 
                 {step === 2 && (
-                  <StepShell
-                    title="Plan y pago"
-                    subtitle="La parte menos divertida. Prometemos hacerla corta."
-                  >
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {tiers
-                        .filter((tier) => tier.action === "onboarding")
-                        .map((tier) => {
-                          const selected = tier.slug === data.plan;
-                          return (
+                  <StepShell title="Tu alta ELI" subtitle="Revisá tu plan y completá el pago seguro." compact>
+                    <div className="[perspective:1800px]">
+                      <div
+                        className="relative grid [transform-style:preserve-3d]"
+                        style={{
+                          height: step3ModuleHeight ? `${step3ModuleHeight}px` : undefined,
+                          transform: `rotateY(${step3View === "payment" ? 180 : 0}deg)`,
+                          transition: reduceMotion
+                            ? "none"
+                            : "height 750ms cubic-bezier(.2,.72,.2,1), transform 750ms cubic-bezier(.2,.72,.2,1)",
+                        }}
+                        data-step3-module-flip
+                      >
+                        <section
+                          className={`${step3View === "review" ? "relative" : "absolute inset-x-0 top-0"} [grid-area:1/1] [backface-visibility:hidden]`}
+                          aria-labelledby="step3-review-heading"
+                          aria-hidden={step3View !== "review"}
+                          inert={step3View !== "review"}
+                          data-step3-module-front
+                        >
+                          <div ref={step3ReviewContentRef} className="grid gap-4">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2346DD]">Paso 3A</p>
+                              <h3 id="step3-review-heading" className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#323159]">Confirmá tu alta</h3>
+                              <p className="mt-1 text-sm text-[#323159]/60">Revisá el plan y tus datos antes de continuar.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {tiers.filter((tier) => tier.action === "onboarding").map((tier) => {
+                                const selected = tier.slug === data.plan;
+                                return (
+                                  <button
+                                    key={tier.slug}
+                                    type="button"
+                                    onClick={() => update("plan", tier.slug as PlanSlug)}
+                                    className={`rounded-[20px] border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20 ${
+                                      selected
+                                        ? "border-[#2346DD] bg-[#F1F4FF] shadow-[0_12px_30px_rgba(35,70,221,0.10)]"
+                                        : "border-[#323159]/10 bg-white hover:border-[#2346DD]/35"
+                                    }`}
+                                    aria-pressed={selected}
+                                  >
+                                    <span className="flex items-center justify-between gap-3">
+                                      <span className="text-sm font-semibold">{tier.slug === "professional" ? "Profesional" : tier.name}</span>
+                                      <span className={`flex h-6 w-6 items-center justify-center rounded-full border ${selected ? "border-[#2346DD] bg-[#2346DD] text-white" : "border-[#323159]/15 text-transparent"}`} aria-hidden="true">
+                                        <Check className="h-3.5 w-3.5" />
+                                      </span>
+                                    </span>
+                                    <span className="mt-2 block text-lg font-semibold tracking-[-0.03em]">
+                                      {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
+                                        ? tier.slug === "professional" ? "ARS 2.000" : "ARS 1.000"
+                                        : tier.price}
+                                      <span className="ml-1 text-xs font-normal text-[#323159]/55">/ mes</span>
+                                    </span>
+                                    {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test" && (
+                                      <span className="text-[11px] font-medium text-amber-700">Importe de prueba TEST</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <section className="border-y border-[#323159]/8 py-4 sm:py-5" aria-label="Resumen de datos">
+                              <div className="flex items-center justify-between gap-3">
+                                <h4 className="font-semibold">Datos de tu administración</h4>
+                                <span className="text-xs font-medium text-[#323159]/60">{data.units || "—"} unidades</span>
+                              </div>
+                              <div className="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2">
+                                <SummaryItem label="Administración" value={data.administrationName} />
+                                <SummaryItem label="Responsable" value={data.responsibleName} />
+                                <SummaryItem label="Email" value={data.email} />
+                                <SummaryItem label="Consorcio" value={data.buildingName} />
+                                <SummaryItem label="Dirección" value={data.address} className="sm:col-span-2" />
+                              </div>
+                            </section>
                             <button
-                              key={tier.slug}
                               type="button"
-                              onClick={() =>
-                                update("plan", tier.slug as PlanSlug)
-                              }
-                              className={`rounded-[24px] border p-5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20 ${
-                                selected
-                                  ? "border-[#2346DD] bg-[#F1F4FF] shadow-[0_18px_48px_rgba(35,70,221,0.12)]"
-                                  : "border-[#323159]/10 bg-white hover:border-[#2346DD]/35"
-                              }`}
-                              aria-pressed={selected}
+                              onClick={continueToPayment}
+                              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[17px] bg-[#2346DD] px-5 font-semibold text-white transition hover:bg-[#1939c4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
                             >
-                              <span className="flex items-center justify-between gap-3">
-                                <span className="text-sm font-semibold">
-                                  {tier.slug === "professional"
-                                    ? "Profesional"
-                                    : tier.name}
-                                </span>
-                                <span
-                                  className={`flex h-7 w-7 items-center justify-center rounded-full border ${
-                                    selected
-                                      ? "border-[#2346DD] bg-[#2346DD] text-white"
-                                      : "border-[#323159]/15 text-transparent"
-                                  }`}
-                                  aria-hidden="true"
-                                >
-                                  <Check className="h-4 w-4" />
-                                </span>
-                              </span>
-                              <span className="mt-4 block text-2xl font-semibold tracking-[-0.03em]">
-                                {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
-                                  ? tier.slug === "professional"
-                                    ? "ARS 2.000"
-                                    : "ARS 1.000"
-                                  : tier.price}
-                              </span>
-                              <span className="mt-1 block text-sm text-[#323159]/55">
-                                por mes
-                              </span>
-                              {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test" && (
-                                <span className="mt-1 block text-xs font-medium text-amber-700">
-                                  Importe de prueba TEST
-                                </span>
-                              )}
+                              Continuar al pago <ArrowRight className="h-4 w-4" aria-hidden="true" />
                             </button>
-                          );
-                        })}
-                    </div>
+                          </div>
+                        </section>
 
-                    <div className="mt-5 rounded-[24px] bg-[#F7F8FC] p-5 sm:p-6">
-                      <div className="flex items-center gap-3">
-                        <CreditCard
-                          className="h-5 w-5 text-[#2346DD]"
-                          aria-hidden="true"
-                        />
-                        <p className="font-semibold">
-                          Incluido en {selectedPlan.name}
-                        </p>
+                        <section
+                          className={`${step3View === "payment" ? "relative" : "absolute inset-x-0 top-0"} [grid-area:1/1] rounded-[24px] bg-[#F1F2F6] [backface-visibility:hidden]`}
+                          style={{ transform: "rotateY(180deg)" }}
+                          aria-labelledby="step3-payment-heading"
+                          aria-hidden={step3View !== "payment"}
+                          inert={step3View !== "payment"}
+                          data-step3-module-back
+                        >
+                          <div ref={step3PaymentContentRef} className="grid gap-3 p-4 sm:p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                              <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2346DD]">Paso 3B</p>
+                              <h3 id="step3-payment-heading" className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#323159]">Pago seguro</h3>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStep3View("review");
+                                  window.history.pushState(
+                                    { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "review" },
+                                    "",
+                                  );
+                                }}
+                                className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-medium text-[#2346DD] transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20"
+                                data-step3-return
+                              >
+                                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver a tus datos
+                              </button>
+                              </div>
+                              <div className="pt-1 text-right text-sm text-[#323159]/70" aria-label="Resumen del plan">
+                                <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#323159]/50">{selectedPlan.name}</p>
+                                <p className="mt-0.5 font-semibold text-[#323159]">
+                                  {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
+                                    ? data.plan === "professional" ? "ARS 2.000" : "ARS 1.000"
+                                    : data.plan === "professional" ? "ARS 155.000" : "ARS 99.999"}
+                                  <span className="ml-1 text-xs font-normal text-[#323159]/55">/ mes</span>
+                                </p>
+                                <p className="mt-0.5 max-w-[320px] truncate text-xs text-[#323159]/55">{data.administrationName} · {data.buildingName}</p>
+                              </div>
+                            </div>
+                            {hasOpenedPayment && (
+                              <>
+                                <MercadoPagoSubscriptionCheckout
+                                  amount={
+                                    process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
+                                      ? data.plan === "professional" ? "2000" : "1000"
+                                      : data.plan === "professional" ? "155000" : "99999"
+                                  }
+                                  email={data.email}
+                                  disabled={!checkoutNonce}
+                                  onToken={createSubscription}
+                                />
+                                {paymentError && <p className="text-sm text-red-600" aria-live="polite">{paymentError}</p>}
+                              </>
+                            )}
+                          </div>
+                        </section>
                       </div>
-                      <ul className="mt-4 grid gap-2 text-sm text-[#323159]/70 sm:grid-cols-2">
-                        {selectedPlan.features.slice(0, 4).map((feature) => (
-                          <li key={feature} className="flex items-start gap-2">
-                            <Check
-                              className="mt-0.5 h-4 w-4 shrink-0 text-[#2346DD]"
-                              aria-hidden="true"
-                            />
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
                     </div>
-                    <MercadoPagoSubscriptionCheckout
-                      amount={
-                        process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
-                          ? data.plan === "professional" ? "2000" : "1000"
-                          : data.plan === "professional" ? "155000" : "99999"
-                      }
-                      email={data.email}
-                      disabled={!checkoutNonce}
-                      onToken={createSubscription}
-                    />
-                    <p className="mt-2 min-h-5 text-sm text-red-600" aria-live="polite">
-                      {paymentError}
-                    </p>
                   </StepShell>
                 )}
 
@@ -548,7 +668,7 @@ export default function SignupWizard() {
                         </p>
                       </div>
                       {payment?.status === "rejected" && (
-                        <button type="button" onClick={() => navigate(2, -1)} className="mt-5 min-h-12 rounded-[18px] bg-white px-5 text-sm font-semibold text-[#2346DD]">
+                        <button type="button" onClick={returnToPayment} className="mt-5 min-h-12 rounded-[18px] bg-white px-5 text-sm font-semibold text-[#2346DD]">
                           Volver al checkout
                         </button>
                       )}
@@ -558,31 +678,14 @@ export default function SignupWizard() {
 
                 {step === 4 && (
                   <StepShell
-                    title="Todo listo"
-                    subtitle="ELI está listo para arrancar."
+                    title="Todo listo!"
+                    subtitle="Bienvenido a ELI."
+                    eyebrow="REGISTRO ELI"
+                    strongTitle
                   >
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {[
-                        "Administración creada",
-                        "Primer consorcio cargado",
-                        "Suscripción activa",
-                        "Acceso habilitado",
-                      ].map((item) => (
-                        <div
-                          key={item}
-                          className="flex items-center gap-3 rounded-[22px] border border-[#323159]/8 bg-white p-4 shadow-[0_12px_30px_rgba(50,49,89,0.06)]"
-                        >
-                          <CheckCircle2
-                            className="h-5 w-5 shrink-0 text-[#2346DD]"
-                            aria-hidden="true"
-                          />
-                          <span className="text-sm font-medium">{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-6 rounded-[24px] bg-[#F7F8FC] p-5 text-sm leading-relaxed text-[#323159]/60">
-                      El primer cobro fue aprobado y reconciliado por el backend de ELI. El acceso queda sujeto al lifecycle comercial vigente.
-                    </div>
+                    <p className="-mt-2 text-sm leading-relaxed text-[#74738E] sm:text-base lg:-mt-6">
+                      En breve te llegará un email con instrucciones.
+                    </p>
                   </StepShell>
                 )}
               </motion.div>
@@ -597,7 +700,7 @@ export default function SignupWizard() {
             />
 
             <p
-              className="mt-3 min-h-5 text-center text-xs text-[#323159]/55 lg:text-right"
+              className={`${step === 2 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
               aria-live="polite"
             >
               {deskNotice
@@ -607,6 +710,48 @@ export default function SignupWizard() {
                   : "No recargues la página mientras verificamos el estado."}
             </p>
           </div>
+          {step === 4 && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 w-full overflow-hidden"
+            >
+              {[
+                { color: "bg-[#CFF5E8]/90 text-[#28765E]", position: "left-[3%] top-[60%]", rotate: "-rotate-12" },
+                { color: "bg-[#D9E9FF]/90 text-[#315DA0]", position: "left-[18%] top-[45%]", rotate: "rotate-6" },
+                { color: "bg-[#E9DFFF]/90 text-[#6B4EA0]", position: "left-[56%] top-[46%]", rotate: "-rotate-6" },
+                { color: "bg-[#FFF0C9]/90 text-[#927022]", position: "left-[78%] top-[64%]", rotate: "rotate-12" },
+                { color: "bg-[#FFE0DB]/90 text-[#A84E45]", position: "left-[67%] top-[73%]", rotate: "-rotate-12" },
+              ].map((bubble, index) => (
+                <motion.span
+                  key={`${bubble.color}-${index}`}
+                  initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.86 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.32, delay: reduceMotion ? 0 : 0.12 + index * 0.055, ease: [0.22, 1, 0.36, 1] }}
+                  className={`pointer-events-none absolute z-10 inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold tracking-wide shadow-[0_8px_20px_rgba(50,49,89,0.12)] sm:h-10 sm:px-3.5 ${bubble.color} ${bubble.position} ${bubble.rotate} max-[420px]:h-8 max-[420px]:gap-1 max-[420px]:px-2 max-[420px]:text-[10px]`}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.2} />
+                  OK
+                </motion.span>
+              ))}
+              <span className="absolute left-[12%] top-[56%] h-3 w-1 rotate-[28deg] rounded-full bg-[#2346DD]/25" />
+              <span className="absolute left-[61%] top-[43%] h-2.5 w-1 rotate-[-24deg] rounded-full bg-[#F1B947]/50" />
+              <span className="absolute left-[91%] top-[68%] h-2 w-1 rotate-[35deg] rounded-full bg-[#EC887C]/50" />
+              <motion.div
+                initial={reduceMotion ? false : { y: 92, opacity: 0, rotate: -5, scale: 1.3 }}
+                animate={{ y: 40, opacity: 1, rotate: 0, scale: 1.3 }}
+                transition={{ duration: reduceMotion ? 0 : 0.6, delay: reduceMotion ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
+                className="pointer-events-none absolute bottom-0 left-0 z-0 h-full max-h-[560px] max-w-[84%] origin-bottom-left max-[639px]:h-auto max-[639px]:w-[68%] max-[639px]:max-h-none max-[639px]:max-w-none"
+              >
+                <Image
+                  src="/images/eli_arm.webp"
+                  alt=""
+                  width={1312}
+                  height={1199}
+                  className="block h-full w-auto max-w-none object-contain object-bottom-left max-[639px]:h-auto max-[639px]:w-full max-[639px]:max-w-full"
+                />
+              </motion.div>
+            </div>
+          )}
         </section>
       </div>
     </main>
@@ -843,25 +988,48 @@ function StepShell({
   title,
   subtitle,
   children,
+  compact = false,
+  strongTitle = false,
+  eyebrow = "Registro ELI",
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
+  compact?: boolean;
+  strongTitle?: boolean;
+  eyebrow?: string;
 }) {
   return (
     <div className="flex flex-1 flex-col">
-      <div className="mb-7 sm:mb-9">
+      <div className={`mb-4 ${compact ? "sm:mb-5" : "sm:mb-9"}`}>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2346DD]">
-          Registro ELI
+          {eyebrow}
         </p>
-        <h2 className="mt-2 text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em] text-[#323159]">
+        <h2 className={`mt-2 ${strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold"} leading-tight tracking-[-0.045em] text-[#323159]`}>
           {title}
         </h2>
-        <p className="mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 sm:text-lg">
+        <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${compact ? "sm:text-base" : "sm:text-lg"}`}>
           {subtitle}
         </p>
       </div>
       {children}
+    </div>
+  );
+}
+
+function SummaryItem({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#323159]/45">{label}</p>
+      <p className="mt-0.5 break-words font-medium text-[#323159]">{value || "—"}</p>
     </div>
   );
 }
@@ -941,7 +1109,7 @@ function WizardNavigation({
   ];
 
   return (
-    <div className="sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:mt-10 lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none">
+    <div className={`${step === 4 ? "relative z-30 mt-4 flex items-center justify-between gap-3 bg-transparent px-0 py-0" : "sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8"} lg:static lg:mx-0 ${step === 2 ? "lg:mt-3" : "lg:mt-10"} ${step === 4 ? "lg:relative lg:z-30" : ""} lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none`}>
       {step === 0 ? (
         <Link
           href="/"
