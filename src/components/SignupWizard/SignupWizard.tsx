@@ -9,10 +9,10 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
-  Mail,
-  RefreshCw,
+  LoaderCircle,
   ShieldCheck,
   Sparkles,
+  XCircle,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -26,13 +26,14 @@ import {
 } from "react";
 
 import { tiers } from "@/data/pricing";
+import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
 
 const steps = [
   "Empecemos",
   "Primer consorcio",
-  "Plan y pago",
-  "Un último paso",
-  "Todo listo",
+  "Checkout",
+  "Procesando pago",
+  "Confirmación",
 ] as const;
 
 type PlanSlug = "core" | "professional";
@@ -59,6 +60,15 @@ const initialData: WizardData = {
 
 const storageKey = "eli-signup-wizard-ui-01";
 
+type PaymentSession = {
+  attemptId: string;
+  statusToken: string;
+  status: string;
+  entitlementState: string;
+  active: boolean;
+  errorCode?: string | null;
+};
+
 export default function SignupWizard() {
   const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
@@ -70,18 +80,28 @@ export default function SignupWizard() {
     plan: requestedPlan === "professional" ? "professional" : "core",
   }));
   const [attempted, setAttempted] = useState(false);
-  const [resent, setResent] = useState(false);
   const [deskNotice, setDeskNotice] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [checkoutNonce, setCheckoutNonce] = useState("");
+  const [payment, setPayment] = useState<PaymentSession>();
+  const [paymentError, setPaymentError] = useState<string>();
+  const paymentAttemptId = payment?.attemptId;
+  const paymentStatusToken = payment?.statusToken;
+  const paymentActive = payment?.active;
 
   useEffect(() => {
     try {
       const saved = window.sessionStorage.getItem(storageKey);
-      if (!saved) return;
+      if (!saved) {
+        setCheckoutNonce(window.crypto.randomUUID());
+        return;
+      }
 
       const parsed = JSON.parse(saved) as {
         data?: Partial<WizardData>;
         step?: number;
+        checkoutNonce?: string;
+        payment?: PaymentSession;
       };
 
       setData((current) => ({
@@ -91,16 +111,19 @@ export default function SignupWizard() {
           ? { plan: requestedPlan }
           : {}),
       }));
+      setCheckoutNonce(parsed.checkoutNonce || window.crypto.randomUUID());
+      setPayment(parsed.payment);
 
       if (
         typeof parsed.step === "number" &&
         parsed.step >= 0 &&
         parsed.step < steps.length
       ) {
-        setStep(parsed.step);
+        setStep(parsed.step > 2 && !parsed.payment ? 2 : parsed.step);
       }
     } catch {
       window.sessionStorage.removeItem(storageKey);
+      setCheckoutNonce(window.crypto.randomUUID());
     } finally {
       setHydrated(true);
     }
@@ -108,8 +131,44 @@ export default function SignupWizard() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.sessionStorage.setItem(storageKey, JSON.stringify({ data, step }));
-  }, [data, hydrated, step]);
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ data, step, checkoutNonce, payment }),
+    );
+  }, [checkoutNonce, data, hydrated, payment, step]);
+
+  useEffect(() => {
+    if (step !== 3 || !paymentAttemptId || !paymentStatusToken || paymentActive) return;
+    let cancelled = false;
+    let cycle = 0;
+    const refresh = async () => {
+      cycle += 1;
+      const reconcile = cycle % 4 === 0;
+      const response = await fetch(
+        reconcile ? "/api/payments/reconcile" : `/api/payments/status?attempt=${paymentAttemptId}`,
+        {
+          method: reconcile ? "POST" : "GET",
+          headers: {
+            "content-type": "application/json",
+            "x-eli-payment-status-token": paymentStatusToken,
+          },
+          ...(reconcile ? { body: JSON.stringify({ attemptId: paymentAttemptId }) } : {}),
+          cache: "no-store",
+        },
+      );
+      if (!response.ok || cancelled) return;
+      const result = (await response.json()) as { checkout?: PaymentSession };
+      if (!result.checkout) return;
+      setPayment((current) => ({ ...result.checkout!, statusToken: current?.statusToken ?? paymentStatusToken }));
+      if (result.checkout.active) navigate(4, 1);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [paymentActive, paymentAttemptId, paymentStatusToken, step]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -187,8 +246,47 @@ export default function SignupWizard() {
     window.history.back();
   }
 
+  function openDesk() {
+    const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
+    if (deskUrl && payment?.active) {
+      window.location.assign(deskUrl);
+      return;
+    }
+    setDeskNotice(true);
+  }
+
+  async function createSubscription(cardToken: string) {
+    setPaymentError(undefined);
+    const response = await fetch("/api/payments/checkout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        offerId: data.plan,
+        checkoutNonce,
+        cardToken,
+        administrationName: data.administrationName,
+        responsibleName: data.responsibleName,
+        email: data.email,
+        buildingName: data.buildingName,
+        buildingAddress: data.address,
+        units: Number(data.units),
+      }),
+    });
+    const result = (await response.json()) as {
+      checkout?: PaymentSession;
+      message?: string;
+    };
+    if (!response.ok || !result.checkout) {
+      const message = result.message ?? "No pudimos crear la suscripción.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    setPayment(result.checkout);
+    navigate(result.checkout.active ? 4 : 3, 1);
+  }
+
   return (
-    <main className="min-h-dvh bg-[#E9EEFF] p-0 text-[#323159] lg:p-4 xl:p-5">
+    <main data-mp-subscriptions-page="with-plan" className="min-h-dvh bg-[#E9EEFF] p-0 text-[#323159] lg:p-4 xl:p-5">
       <div className="mx-auto grid min-h-dvh w-full max-w-[1600px] grid-cols-1 overflow-hidden bg-white lg:min-h-[calc(100dvh-2rem)] lg:grid-cols-[minmax(320px,39%)_minmax(0,61%)] lg:gap-3 lg:rounded-[36px] lg:bg-[#E9EEFF] xl:min-h-[calc(100dvh-2.5rem)] xl:grid-cols-[minmax(360px,38%)_minmax(0,62%)] xl:gap-4">
         <EditorialPanel step={step} />
 
@@ -363,11 +461,20 @@ export default function SignupWizard() {
                                 </span>
                               </span>
                               <span className="mt-4 block text-2xl font-semibold tracking-[-0.03em]">
-                                {tier.price}
+                                {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
+                                  ? tier.slug === "professional"
+                                    ? "ARS 2.000"
+                                    : "ARS 1.000"
+                                  : tier.price}
                               </span>
                               <span className="mt-1 block text-sm text-[#323159]/55">
                                 por mes
                               </span>
+                              {process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test" && (
+                                <span className="mt-1 block text-xs font-medium text-amber-700">
+                                  Importe de prueba TEST
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -395,26 +502,41 @@ export default function SignupWizard() {
                         ))}
                       </ul>
                     </div>
-                    <p className="mt-4 text-xs leading-relaxed text-[#323159]/50">
-                      Demo visual: el pago no se procesa en esta versión.
+                    <MercadoPagoSubscriptionCheckout
+                      amount={
+                        process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
+                          ? data.plan === "professional" ? "2000" : "1000"
+                          : data.plan === "professional" ? "155000" : "99999"
+                      }
+                      email={data.email}
+                      disabled={!checkoutNonce}
+                      onToken={createSubscription}
+                    />
+                    <p className="mt-2 min-h-5 text-sm text-red-600" aria-live="polite">
+                      {paymentError}
                     </p>
                   </StepShell>
                 )}
 
                 {step === 3 && (
                   <StepShell
-                    title="Un último paso"
-                    subtitle="Revisá el correo y confirmá el acceso."
+                    title={payment?.status === "rejected" ? "Pago rechazado" : "Estamos verificando el pago"}
+                    subtitle="La pantalla no activa ELI: esperamos la confirmación server-side de Mercado Pago."
                   >
                     <div className="rounded-[28px] bg-[#F3F5FF] p-6 sm:p-8">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-white text-[#2346DD] shadow-sm">
-                        <Mail className="h-6 w-6" aria-hidden="true" />
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] bg-white shadow-sm ${payment?.status === "rejected" ? "text-red-600" : "text-[#2346DD]"}`}>
+                        {payment?.status === "rejected" ? (
+                          <XCircle className="h-7 w-7" aria-hidden="true" />
+                        ) : (
+                          <LoaderCircle className="h-7 w-7 animate-spin" aria-hidden="true" />
+                        )}
                       </div>
                       <p className="mt-6 text-lg font-semibold">
-                        Te escribimos a
-                      </p>
-                      <p className="mt-1 break-all text-lg text-[#2346DD]">
-                        {data.email || "nombre@administracion.com"}
+                        {payment?.status === "rejected"
+                          ? "Mercado Pago no aprobó el cobro."
+                          : payment?.status === "pending_review"
+                            ? "El pago está pendiente o en revisión."
+                            : "La suscripción fue enviada y estamos conciliando el primer cobro."}
                       </p>
                       <div className="mt-6 flex items-start gap-3 rounded-[20px] bg-white p-4 text-sm leading-relaxed text-[#323159]/65">
                         <Clock3
@@ -422,23 +544,14 @@ export default function SignupWizard() {
                           aria-hidden="true"
                         />
                         <p>
-                          El enlace dura 24 horas. Si se vence, podés pedir uno
-                          nuevo sin empezar de cero.
+                          Los redirects son sólo informativos. Tu administración se habilita únicamente cuando ELI verifica un pago aprobado.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setResent(true)}
-                        className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-[18px] px-4 text-sm font-semibold text-[#2346DD] transition hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20"
-                      >
-                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                        Reenviar email
-                      </button>
-                      <p className="mt-2 min-h-5 text-sm text-[#323159]/55" aria-live="polite">
-                        {resent
-                          ? "Listo. En la demo lo dejamos anotado."
-                          : "No enviaremos ningún email real."}
-                      </p>
+                      {payment?.status === "rejected" && (
+                        <button type="button" onClick={() => navigate(2, -1)} className="mt-5 min-h-12 rounded-[18px] bg-white px-5 text-sm font-semibold text-[#2346DD]">
+                          Volver al checkout
+                        </button>
+                      )}
                     </div>
                   </StepShell>
                 )}
@@ -468,8 +581,7 @@ export default function SignupWizard() {
                       ))}
                     </div>
                     <div className="mt-6 rounded-[24px] bg-[#F7F8FC] p-5 text-sm leading-relaxed text-[#323159]/60">
-                      Prototipo local: estos estados son visuales y no crean
-                      cuentas, suscripciones ni datos reales.
+                      El primer cobro fue aprobado y reconciliado por el backend de ELI. El acceso queda sujeto al lifecycle comercial vigente.
                     </div>
                   </StepShell>
                 )}
@@ -480,7 +592,8 @@ export default function SignupWizard() {
               step={step}
               onBack={back}
               onNext={() => next()}
-              onDesk={() => setDeskNotice(true)}
+              onDesk={openDesk}
+              hideNext={step === 2 || step === 3}
             />
 
             <p
@@ -488,10 +601,10 @@ export default function SignupWizard() {
               aria-live="polite"
             >
               {deskNotice
-                ? "La conexión con ELI Desk llega en una próxima wave."
+                ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
                 : step === 4
-                  ? "Sin activación ni acceso real en esta demo."
-                  : "Tus datos quedan solo en este navegador durante la demo."}
+                  ? "Suscripción activa confirmada por ELI."
+                  : "No recargues la página mientras verificamos el estado."}
             </p>
           </div>
         </section>
@@ -812,11 +925,13 @@ function WizardNavigation({
   onBack,
   onNext,
   onDesk,
+  hideNext,
 }: {
   step: number;
   onBack: () => void;
   onNext: () => void;
   onDesk: () => void;
+  hideNext: boolean;
 }) {
   const nextLabels = [
     "Continuar",
@@ -846,7 +961,7 @@ function WizardNavigation({
         </button>
       )}
 
-      {step < steps.length - 1 ? (
+      {step < steps.length - 1 && !hideNext ? (
         <button
           type={step <= 1 ? "submit" : "button"}
           form={step <= 1 ? "signup-step-form" : undefined}
@@ -856,7 +971,7 @@ function WizardNavigation({
           {nextLabels[step]}
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
-      ) : (
+      ) : step === steps.length - 1 ? (
         <button
           type="button"
           onClick={onDesk}
@@ -865,7 +980,7 @@ function WizardNavigation({
           Entrar a ELI Desk
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
-      )}
+      ) : <span />}
     </div>
   );
 }
