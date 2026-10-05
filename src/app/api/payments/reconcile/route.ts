@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { PaymentsError, reconcileAttempt } from "@/lib/payments/service";
+import { PaymentsError, reconcileAuthenticatedAttempt } from "@/lib/payments/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,8 +8,11 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as { attemptId?: string };
-    const statusToken = request.headers.get("x-eli-payment-status-token") ?? "";
-    const result = await reconcileAttempt(body.attemptId ?? "", statusToken);
+    const accessToken = /^Bearer ([^\s]+)$/.exec(request.headers.get("authorization") ?? "")?.[1];
+    if (!accessToken) {
+      throw new PaymentsError("authentication_required", 401, "Ingresá con tu email para continuar.");
+    }
+    const result = await reconcileAuthenticatedAttempt(body.attemptId ?? "", accessToken);
     return NextResponse.json(
       { ok: true, checkout: result },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },

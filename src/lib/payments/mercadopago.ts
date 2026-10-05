@@ -61,6 +61,7 @@ export type MercadoPagoSubscription = {
   id: string;
   status: string;
   external_reference?: string;
+  preapproval_plan_id?: string;
   init_point?: string;
   auto_recurring?: {
     start_date?: string;
