@@ -36,8 +36,10 @@ export type CheckoutInput = {
 
 type CheckoutDecision =
   | { decision: "checkout_created"; checkout: CheckoutRow }
-  | { decision: "resume_pending" | "retry_review_required"; organization_id: string; attempt_id: string }
-  | { decision: "desk" | "regularize"; organization_id: string }
+  | { decision: "resume_pending"; organization_id: string; attempt_id: string }
+  | { decision: "retry_review_required"; organization_id: string; attempt_id: string }
+  | { decision: "desk"; organization_id: string }
+  | { decision: "regularize"; organization_id: string }
   | { decision: "selection_required" };
 
 export type AccountInspection = {
