@@ -1,5 +1,11 @@
 import { paymentsConfig } from "./config";
-import { hmac, newExternalReference, sha256, stableJson } from "./crypto";
+import {
+  hmac,
+  matchesMercadoPagoSubscriptionBinding,
+  newExternalReference,
+  sha256,
+  stableJson,
+} from "./crypto";
 import {
   createPreapproval,
   findPaymentsByExternalReference,
@@ -9,7 +15,7 @@ import {
   type MercadoPagoPayment,
   type MercadoPagoSubscription,
 } from "./mercadopago";
-import { databaseRequest, queryValue, rpc } from "./supabase";
+import { authenticatedRpc, databaseRequest, queryValue, rpc, verifiedAuthEmail } from "./supabase";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CARD_TOKEN_REGEX = /^[A-Za-z0-9_-]{8,512}$/;
@@ -24,6 +30,32 @@ export type CheckoutInput = {
   buildingName: string;
   buildingAddress: string;
   units: number;
+  targetOrganizationId: string | null;
+  newDistinctAdministration: boolean;
+};
+
+type CheckoutDecision =
+  | { decision: "checkout_created"; checkout: CheckoutRow }
+  | { decision: "resume_pending" | "retry_review_required"; organization_id: string; attempt_id: string }
+  | { decision: "desk" | "regularize"; organization_id: string }
+  | { decision: "selection_required" };
+
+export type AccountInspection = {
+  decision: "inspect";
+  pending: Array<{
+    organization_id: string;
+    organization_name: string;
+    attempt_id: string | null;
+    attempt_status: string | null;
+    plan_code: string | null;
+  }>;
+  organizations: Array<{
+    organization_id: string;
+    organization_name: string;
+    organization_status: string;
+    subscription_status: string | null;
+    entitlement_state: string | null;
+  }>;
 };
 
 type CheckoutRow = {
@@ -53,6 +85,8 @@ type AttemptRow = {
   provider_status: string | null;
   failure_code: string | null;
   updated_at: string;
+  organizations?: { status: string } | Array<{ status: string }> | null;
+  onboarding_sessions?: { status: string } | Array<{ status: string }> | null;
   subscriptions:
     | {
         id: string;
@@ -102,6 +136,8 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
     buildingName: cleanText(body.buildingName, 160),
     buildingAddress: cleanText(body.buildingAddress, 240),
     units,
+    targetOrganizationId: cleanText(body.targetOrganizationId, 36) || null,
+    newDistinctAdministration: body.newDistinctAdministration === true,
   };
 
   if (
@@ -116,6 +152,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
     !Number.isInteger(units) ||
     units < 1 ||
     units > 9999
+    || (result.targetOrganizationId !== null && !/^[0-9a-f-]{36}$/i.test(result.targetOrganizationId))
   ) {
     throw new PaymentsError(
       "invalid_checkout_input",
@@ -138,7 +175,27 @@ function statusTokenFor(idempotencyHash: string) {
   return hmac(config.statusTokenSecret, `payment-status:${idempotencyHash}`);
 }
 
-export async function beginCheckout(input: CheckoutInput) {
+export async function inspectAuthenticatedCheckout(accessToken: string) {
+  const email = await verifiedAuthEmail(accessToken);
+  if (!email) {
+    throw new PaymentsError("authentication_required", 401, "Ingresá con tu email para continuar.");
+  }
+  const result = await authenticatedRpc<AccountInspection>(
+    accessToken,
+    "resolve_authenticated_payment_checkout",
+    { p_action: "inspect" },
+  );
+  if (result.decision !== "inspect" || !Array.isArray(result.pending) || !Array.isArray(result.organizations)) {
+    throw new PaymentsError("account_resolution_unavailable", 503, "No pudimos verificar tu cuenta.");
+  }
+  return { email, ...result };
+}
+
+export async function beginCheckout(input: CheckoutInput, accessToken: string) {
+  const verifiedEmail = await verifiedAuthEmail(accessToken);
+  if (!verifiedEmail || verifiedEmail !== input.email) {
+    throw new PaymentsError("authentication_required", 401, "Ingresá con el email indicado para continuar.");
+  }
   const config = paymentsConfig();
   const idempotencyHash = hmac(config.idempotencySecret, `checkout:${input.checkoutNonce}`);
   const statusToken = statusTokenFor(idempotencyHash);
@@ -154,7 +211,11 @@ export async function beginCheckout(input: CheckoutInput) {
     }),
   );
 
-  const rows = await rpc<CheckoutRow[]>("begin_payment_checkout", {
+  const decision = await authenticatedRpc<CheckoutDecision>(
+    accessToken,
+    "resolve_authenticated_payment_checkout",
+    {
+    p_action: "start",
     p_offer_code: input.offerId,
     p_idempotency_key_hash: idempotencyHash,
     p_payload_fingerprint: payloadFingerprint,
@@ -162,18 +223,45 @@ export async function beginCheckout(input: CheckoutInput) {
     p_status_token_hash: sha256(statusToken),
     p_administration_name: input.administrationName,
     p_responsible_name: input.responsibleName,
-    p_email: input.email,
     p_building_name: input.buildingName,
     p_building_address: input.buildingAddress,
     p_units: input.units,
     p_provider_environment: config.providerEnvironment,
-  });
-  const checkout = rows[0];
+    p_target_organization_id: input.targetOrganizationId,
+    p_new_distinct_administration: input.newDistinctAdministration,
+  },
+  );
+
+  if (decision.decision === "resume_pending") {
+    const attempt = await getAttemptById(decision.attempt_id);
+    if (attempt.organization_id !== decision.organization_id) {
+      throw new PaymentsError("checkout_binding_mismatch", 409, "No pudimos reanudar este pago.");
+    }
+    return presentAttempt(attempt);
+  }
+  if (decision.decision === "selection_required") {
+    throw new PaymentsError("account_selection_required", 409, "Elegí tu administración para continuar.");
+  }
+  if (decision.decision === "retry_review_required") {
+    throw new PaymentsError("checkout_retry_review_required", 409, "Este pago requiere revisión antes de volver a intentarlo.");
+  }
+  if (decision.decision === "desk" || decision.decision === "regularize") {
+    throw new PaymentsError(
+      decision.decision === "desk" ? "manage_subscription_in_desk" : "regularization_required",
+      409,
+      decision.decision === "desk"
+        ? "Tu administración ya tiene una suscripción activa. Gestioná el plan desde ELI Desk."
+        : "Esta administración requiere regularización. No iniciamos otro cobro.",
+    );
+  }
+  const checkout = decision.checkout;
   if (!checkout) throw new PaymentsError("checkout_not_created", 500, "No pudimos iniciar el checkout.");
 
-  const current = await getAttempt(checkout.attempt_id, statusToken);
+  const current = checkout.reused
+    ? await getAttemptById(checkout.attempt_id)
+    : await getAttempt(checkout.attempt_id, statusToken);
   if (checkout.reused && current.provider_subscription_id) {
-    return presentAttempt(current, statusToken);
+    return presentAttempt(current);
   }
 
   if (config.providerMode === "mercadopago" && !checkout.provider_preapproval_plan_id) {
@@ -194,7 +282,7 @@ export async function beginCheckout(input: CheckoutInput) {
     p_attempt_id: checkout.attempt_id,
   });
   if (!claimed) {
-    return presentAttempt(await getAttempt(checkout.attempt_id, statusToken), statusToken);
+    return presentAttempt(await getAttemptById(checkout.attempt_id));
   }
 
   let preapproval: MercadoPagoSubscription;
@@ -221,6 +309,27 @@ export async function beginCheckout(input: CheckoutInput) {
       indeterminate
         ? "Mercado Pago sigue procesando la solicitud. Vamos a verificar el resultado."
         : "No pudimos crear la suscripción en Mercado Pago.",
+    );
+  }
+
+  if (
+    config.providerMode === "mercadopago" &&
+    !matchesMercadoPagoSubscriptionBinding({
+      expectedExternalReference: checkout.external_reference,
+      expectedPlanId: checkout.provider_preapproval_plan_id!,
+      subscription: preapproval,
+    })
+  ) {
+    await patchAttempt(checkout.attempt_id, {
+      status: "failed",
+      failure_code: "provider_subscription_binding_mismatch",
+      failure_detail: "Mercado Pago returned a subscription outside the selected offer binding",
+      resolved_at: new Date().toISOString(),
+    });
+    throw new PaymentsError(
+      "provider_subscription_binding_mismatch",
+      409,
+      "No pudimos verificar la suscripción creada. El intento quedó bloqueado para revisión.",
     );
   }
 
@@ -257,25 +366,83 @@ export async function getAttempt(attemptId: string, statusToken: string) {
   const path =
     `payment_attempts?id=eq.${queryValue(attemptId)}` +
     `&status_token_hash=eq.${sha256(statusToken)}` +
-    "&select=id,organization_id,external_reference,payer_email,amount,currency,status," +
-    "provider_subscription_id,provider_status,failure_code,updated_at," +
-    "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
+    `&select=${attemptSelect}`;
   const rows = await databaseRequest<AttemptRow[]>(path);
   if (!rows[0]) throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
   return rows[0];
+}
+
+const attemptSelect =
+  "id,organization_id,external_reference,payer_email,amount,currency,status," +
+  "provider_subscription_id,provider_status,failure_code,updated_at," +
+  "organizations!payment_attempts_organization_id_fkey(status)," +
+  "onboarding_sessions!payment_attempts_onboarding_session_id_fkey(status)," +
+  "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
+
+async function getAttemptById(attemptId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(attemptId)) {
+    throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
+  }
+  const rows = await databaseRequest<AttemptRow[]>(
+    `payment_attempts?id=eq.${queryValue(attemptId)}&select=${attemptSelect}&limit=1`,
+  );
+  if (!rows[0]) throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
+  return rows[0];
+}
+
+async function getAuthorizedAttempt(attemptId: string, accessToken: string) {
+  let inspection: {
+    decision: string;
+    attempt?: { attempt_id: string; organization_id: string };
+  };
+  try {
+    inspection = await authenticatedRpc(accessToken, "resolve_authenticated_payment_checkout", {
+      p_action: "inspect_attempt",
+      p_attempt_id: attemptId,
+    });
+  } catch {
+    throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
+  }
+  if (inspection.decision !== "inspect_attempt" || inspection.attempt?.attempt_id !== attemptId) {
+    throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
+  }
+  const attempt = await getAttemptById(attemptId);
+  if (attempt.organization_id !== inspection.attempt.organization_id) {
+    throw new PaymentsError("status_not_found", 404, "No encontramos este estado de pago.");
+  }
+  return attempt;
+}
+
+export async function getAuthenticatedAttempt(attemptId: string, accessToken: string) {
+  return presentAttempt(await getAuthorizedAttempt(attemptId, accessToken));
 }
 
 export function presentAttempt(attempt: AttemptRow, statusToken?: string) {
   const relation = Array.isArray(attempt.subscriptions)
     ? attempt.subscriptions[0]
     : attempt.subscriptions;
+  const organization = Array.isArray(attempt.organizations)
+    ? attempt.organizations[0]
+    : attempt.organizations;
+  const session = Array.isArray(attempt.onboarding_sessions)
+    ? attempt.onboarding_sessions[0]
+    : attempt.onboarding_sessions;
+  const paymentApproved = Boolean(relation?.first_payment_approved_at);
+  const operationalReady = Boolean(
+    paymentApproved &&
+    relation?.entitlement_state === "ACTIVE" &&
+    organization?.status === "active" &&
+    session?.status === "completed"
+  );
   return {
     attemptId: attempt.id,
     ...(statusToken ? { statusToken } : {}),
     status: attempt.status,
     providerStatus: attempt.provider_status,
     entitlementState: relation?.entitlement_state ?? "PENDING_PAYMENT",
-    active: Boolean(relation?.first_payment_approved_at && relation.entitlement_state === "ACTIVE"),
+    paymentApproved,
+    operationalReady,
+    active: operationalReady,
     currentPeriodEnd: relation?.current_period_end ?? null,
     cancelAtPeriodEnd: relation?.cancel_at_period_end ?? false,
     errorCode: attempt.failure_code,
@@ -292,6 +459,45 @@ export async function reconcileProviderState(input: {
 }) {
   if (input.payment?.external_reference && input.payment.external_reference !== input.externalReference) {
     throw new PaymentsError("provider_reference_mismatch", 409, "La referencia del pago no coincide.");
+  }
+
+  const config = paymentsConfig();
+  if (config.providerMode === "mercadopago") {
+    const attempts = await databaseRequest<Array<{
+      plan_version_id: string;
+      provider_environment: string;
+      provider_subscription_id: string | null;
+    }>>(
+      `payment_attempts?external_reference=eq.${queryValue(input.externalReference)}` +
+        "&select=plan_version_id,provider_environment,provider_subscription_id&limit=1",
+    );
+    const attempt = attempts[0];
+    if (
+      !attempt ||
+      attempt.provider_environment !== config.providerEnvironment ||
+      !attempt.provider_subscription_id
+    ) {
+      throw new PaymentsError("provider_attempt_binding_mismatch", 409, "La suscripción no coincide con un intento válido.");
+    }
+
+    const versions = await databaseRequest<Array<{ provider_preapproval_plan_id: string | null }>>(
+      `payment_plan_versions?id=eq.${queryValue(attempt.plan_version_id)}` +
+        `&provider=eq.mercadopago&provider_environment=eq.${queryValue(attempt.provider_environment)}` +
+        "&select=provider_preapproval_plan_id&limit=1",
+    );
+    const expectedPlanId = versions[0]?.provider_preapproval_plan_id;
+    if (
+      !expectedPlanId ||
+      !matchesMercadoPagoSubscriptionBinding({
+        expectedExternalReference: input.externalReference,
+        expectedPlanId,
+        expectedSubscriptionId: attempt.provider_subscription_id,
+        requireBoundSubscription: true,
+        subscription: input.subscription,
+      })
+    ) {
+      throw new PaymentsError("provider_subscription_binding_mismatch", 409, "La suscripción no coincide con el plan seleccionado.");
+    }
   }
 
   return rpc("reconcile_payment_state", {
@@ -317,6 +523,15 @@ export async function reconcileProviderState(input: {
 
 export async function reconcileAttempt(attemptId: string, statusToken: string) {
   const attempt = await getAttempt(attemptId, statusToken);
+  return reconcileAttemptRow(attempt, () => getAttempt(attemptId, statusToken));
+}
+
+export async function reconcileAuthenticatedAttempt(attemptId: string, accessToken: string) {
+  const attempt = await getAuthorizedAttempt(attemptId, accessToken);
+  return reconcileAttemptRow(attempt, () => getAuthorizedAttempt(attemptId, accessToken));
+}
+
+async function reconcileAttemptRow(attempt: AttemptRow, reload: () => Promise<AttemptRow>) {
   if (!attempt.provider_subscription_id) return presentAttempt(attempt);
   const config = paymentsConfig();
   if (config.providerMode === "stub") return presentAttempt(attempt);
@@ -332,7 +547,7 @@ export async function reconcileAttempt(attemptId: string, statusToken: string) {
     actor: "reconciliation",
     correlationId: `status:${attempt.id}`,
   });
-  return presentAttempt(await getAttempt(attemptId, statusToken));
+  return presentAttempt(await reload());
 }
 
 export async function reconcileUnresolvedAttempts(limit = 25) {

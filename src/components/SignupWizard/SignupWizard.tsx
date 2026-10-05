@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   ArrowLeft,
   ArrowRight,
@@ -63,11 +64,35 @@ const storageKey = "eli-signup-wizard-ui-01";
 
 type PaymentSession = {
   attemptId: string;
-  statusToken: string;
+  statusToken?: string;
   status: string;
   entitlementState: string;
   active: boolean;
+  paymentApproved: boolean;
+  operationalReady: boolean;
   errorCode?: string | null;
+};
+
+type AccountInspection = {
+  pending: Array<{
+    organization_id: string;
+    organization_name: string;
+    administration_name: string | null;
+    responsible_name: string | null;
+    building_name: string | null;
+    building_address: string | null;
+    units: number | null;
+    attempt_id: string | null;
+    attempt_status: string | null;
+    plan_code: string | null;
+  }>;
+  organizations: Array<{
+    organization_id: string;
+    organization_name: string;
+    organization_status: string;
+    subscription_status: string | null;
+    entitlement_state: string | null;
+  }>;
 };
 
 export default function SignupWizard() {
@@ -91,8 +116,63 @@ export default function SignupWizard() {
   const step3PaymentContentRef = useRef<HTMLDivElement>(null);
   const [payment, setPayment] = useState<PaymentSession>();
   const [paymentError, setPaymentError] = useState<string>();
+  const [authClient, setAuthClient] = useState<SupabaseClient>();
+  const [verifiedEmail, setVerifiedEmail] = useState<string>();
+  const [account, setAccount] = useState<AccountInspection>();
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
+  const [distinctAdministration, setDistinctAdministration] = useState(false);
+  const [signInNotice, setSignInNotice] = useState<string>();
+  const [signInBusy, setSignInBusy] = useState(false);
   const paymentAttemptId = payment?.attemptId;
   const paymentStatusToken = payment?.statusToken;
+
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      setSignInNotice("El ingreso no está configurado en este entorno.");
+      return;
+    }
+    const client = createClient(url, key, {
+      auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true },
+    });
+    setAuthClient(client);
+    let cancelled = false;
+    const restore = async () => {
+      const callbackUrl = new URL(window.location.href);
+      const code = callbackUrl.searchParams.get("code");
+      if (code) {
+        const { error } = await client.auth.exchangeCodeForSession(code);
+        callbackUrl.searchParams.delete("code");
+        window.history.replaceState(window.history.state, "", callbackUrl);
+        if (error) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+      }
+      const { data: userData } = await client.auth.getUser();
+      if (cancelled || !userData.user?.email || !userData.user.email_confirmed_at) return;
+      const email = userData.user.email.trim().toLowerCase();
+      setVerifiedEmail(email);
+      setData((current) => ({ ...current, email }));
+      const { data: sessionData } = await client.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return;
+      const response = await fetch("/api/payments/checkout", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!response.ok || cancelled) {
+        setSignInNotice("No pudimos verificar tus administraciones. Intentá nuevamente.");
+        return;
+      }
+      const result = (await response.json()) as { account?: AccountInspection };
+      if (!result.account || cancelled) return;
+      setAccount(result.account);
+      if (result.account.pending.length === 1 && result.account.organizations.length === 0) {
+        setSelectedOrganizationId(result.account.pending[0].organization_id);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, []);
 
   useLayoutEffect(() => {
     if (step !== 2) return;
@@ -112,7 +192,7 @@ export default function SignupWizard() {
     observer.observe(content);
     return () => observer.disconnect();
   }, [hasOpenedPayment, step, step3View]);
-  const paymentActive = payment?.active;
+  const paymentApproved = payment?.paymentApproved;
 
   useEffect(() => {
     try {
@@ -168,19 +248,21 @@ export default function SignupWizard() {
   }, [checkoutNonce, data, hydrated, payment, step, step3View]);
 
   useEffect(() => {
-    if (step !== 3 || !paymentAttemptId || !paymentStatusToken || paymentActive) return;
+    if (step !== 3 || !paymentAttemptId || paymentApproved) return;
     let cancelled = false;
     let cycle = 0;
     const refresh = async () => {
       cycle += 1;
       const reconcile = cycle % 4 === 0;
+      const authorization = await authorizationHeader();
+      if (!authorization) return;
       const response = await fetch(
         reconcile ? "/api/payments/reconcile" : `/api/payments/status?attempt=${paymentAttemptId}`,
         {
           method: reconcile ? "POST" : "GET",
           headers: {
             "content-type": "application/json",
-            "x-eli-payment-status-token": paymentStatusToken,
+            Authorization: authorization,
           },
           ...(reconcile ? { body: JSON.stringify({ attemptId: paymentAttemptId }) } : {}),
           cache: "no-store",
@@ -190,7 +272,7 @@ export default function SignupWizard() {
       const result = (await response.json()) as { checkout?: PaymentSession };
       if (!result.checkout) return;
       setPayment((current) => ({ ...result.checkout!, statusToken: current?.statusToken ?? paymentStatusToken }));
-      if (result.checkout.active) navigate(4, 1);
+      if (result.checkout.paymentApproved) navigate(4, 1);
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 3000);
@@ -198,7 +280,7 @@ export default function SignupWizard() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [paymentActive, paymentAttemptId, paymentStatusToken, step]);
+  }, [authClient, paymentApproved, paymentAttemptId, step]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -310,6 +392,58 @@ export default function SignupWizard() {
     event?.preventDefault();
     setAttempted(true);
     if (!stepValid || step >= steps.length - 1) return;
+    if (step === 0) {
+      const email = data.email.trim().toLowerCase();
+      if (!verifiedEmail || verifiedEmail !== email || !account) {
+        setSignInNotice("Ingresá con este email para continuar.");
+        return;
+      }
+      const pending = account.pending.find((item) => item.organization_id === selectedOrganizationId);
+      if (pending) {
+        if (!pending.attempt_id || !["created", "submitting", "provider_pending", "pending_review", "indeterminate", "approved"].includes(pending.attempt_status ?? "")) {
+          setSignInNotice("Esta alta requiere revisión antes de continuar con el pago.");
+          return;
+        }
+        setData((current) => ({
+          ...current,
+          administrationName: pending.administration_name ?? pending.organization_name,
+          responsibleName: pending.responsible_name ?? current.responsibleName,
+          buildingName: pending.building_name ?? current.buildingName,
+          address: pending.building_address ?? current.address,
+          units: pending.units === null ? current.units : String(pending.units),
+          ...(pending.plan_code === "core" || pending.plan_code === "professional"
+            ? { plan: pending.plan_code }
+            : {}),
+        }));
+        if (pending.attempt_status === "created") {
+          navigate(2, 1);
+          return;
+        }
+        setPayment({
+          attemptId: pending.attempt_id,
+          status: pending.attempt_status ?? "provider_pending",
+          entitlementState: "PENDING_PAYMENT",
+          active: false,
+          paymentApproved: false,
+          operationalReady: false,
+        });
+        navigate(3, 1);
+        return;
+      }
+      const existing = account.organizations.find((item) => item.organization_id === selectedOrganizationId);
+      if (existing) {
+        setSignInNotice(
+          existing.entitlement_state === "ACTIVE"
+            ? "Gestioná el plan de esta administración desde ELI Desk."
+            : "Esta administración requiere regularización. No iniciamos otro cobro.",
+        );
+        return;
+      }
+      if ((account.pending.length > 0 || account.organizations.length > 0) && !distinctAdministration) {
+        setSignInNotice("Elegí una administración o indicá que vas a registrar otra distinta.");
+        return;
+      }
+    }
     navigate(step + 1, 1);
   }
 
@@ -327,11 +461,42 @@ export default function SignupWizard() {
     setDeskNotice(true);
   }
 
+  async function authorizationHeader() {
+    if (!authClient) return null;
+    const { data: sessionData } = await authClient.auth.getSession();
+    const token = sessionData.session?.access_token;
+    return token ? `Bearer ${token}` : null;
+  }
+
+  async function requestEmailSignIn() {
+    const email = data.email.trim().toLowerCase();
+    if (!authClient || !isValidEmail(email) || signInBusy) return;
+    setSignInBusy(true);
+    setSignInNotice(undefined);
+    try {
+      await authClient.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+      });
+      setSignInNotice("Si este email puede ingresar, vas a recibir un enlace para continuar.");
+    } catch {
+      setSignInNotice("No pudimos enviar el enlace. Revisá el email e intentá nuevamente.");
+    } finally {
+      setSignInBusy(false);
+    }
+  }
+
   async function createSubscription(cardToken: string) {
     setPaymentError(undefined);
+    const authorization = await authorizationHeader();
+    if (!authorization || !verifiedEmail || verifiedEmail !== data.email.trim().toLowerCase()) {
+      const message = "Ingresá con tu email antes de iniciar el pago.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
     const response = await fetch("/api/payments/checkout", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", Authorization: authorization },
       body: JSON.stringify({
         offerId: data.plan,
         checkoutNonce,
@@ -342,6 +507,8 @@ export default function SignupWizard() {
         buildingName: data.buildingName,
         buildingAddress: data.address,
         units: Number(data.units),
+        targetOrganizationId: distinctAdministration ? null : selectedOrganizationId ?? null,
+        newDistinctAdministration: distinctAdministration,
       }),
     });
     const result = (await response.json()) as {
@@ -354,7 +521,7 @@ export default function SignupWizard() {
       throw new Error(message);
     }
     setPayment(result.checkout);
-    navigate(result.checkout.active ? 4 : 3, 1);
+    navigate(result.checkout.paymentApproved ? 4 : 3, 1);
   }
 
   return (
@@ -433,6 +600,63 @@ export default function SignupWizard() {
                             : undefined
                         }
                       />
+                      <div className="grid gap-3 sm:col-span-2">
+                        {verifiedEmail === data.email.trim().toLowerCase() ? (
+                          <p className="text-sm font-medium text-emerald-700">Email verificado: {verifiedEmail}</p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void requestEmailSignIn()}
+                            disabled={!authClient || !isValidEmail(data.email) || signInBusy}
+                            className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {signInBusy ? "Enviando enlace…" : "Continuar con este email"}
+                          </button>
+                        )}
+                        {account && (account.pending.length > 0 || account.organizations.length > 0) && (
+                          <>
+                            <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
+                              Elegí una administración vinculada a tu cuenta
+                              <select
+                                id="existing-organization"
+                                value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
+                                onChange={(event) => {
+                                  setDistinctAdministration(false);
+                                  setSelectedOrganizationId(event.target.value || undefined);
+                                  setSignInNotice(undefined);
+                                }}
+                                className="min-h-11 rounded-xl border border-[#323159]/15 bg-white px-3 font-normal"
+                              >
+                                <option value="">Seleccionar administración</option>
+                                {account.pending.map((item) => (
+                                  <option key={item.organization_id} value={item.organization_id}>
+                                    {item.organization_name} · alta pendiente
+                                  </option>
+                                ))}
+                                {account.organizations.map((item) => (
+                                  <option key={item.organization_id} value={item.organization_id}>
+                                    {item.organization_name} · {item.entitlement_state === "ACTIVE" ? "activa" : "requiere regularización"}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="flex items-start gap-2 text-sm text-[#323159]/75">
+                              <input
+                                type="checkbox"
+                                checked={distinctAdministration}
+                                onChange={(event) => {
+                                  setDistinctAdministration(event.target.checked);
+                                  if (event.target.checked) setSelectedOrganizationId(undefined);
+                                  setSignInNotice(undefined);
+                                }}
+                                className="mt-1 accent-[#2346DD]"
+                              />
+                              Voy a registrar una administración distinta
+                            </label>
+                          </>
+                        )}
+                        {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
+                      </div>
                     </form>
                   </StepShell>
                 )}
