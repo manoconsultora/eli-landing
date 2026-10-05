@@ -33,3 +33,26 @@ export function safeEqualHex(left: string, right: string) {
   const rightBuffer = Buffer.from(right, "hex");
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
+
+export function matchesMercadoPagoSubscriptionBinding(input: {
+  expectedExternalReference: string;
+  expectedPlanId: string;
+  expectedSubscriptionId?: string | null;
+  requireBoundSubscription?: boolean;
+  subscription: {
+    id?: string | null;
+    external_reference?: string | null;
+    preapproval_plan_id?: string | null;
+  };
+}) {
+  return Boolean(
+    input.expectedExternalReference &&
+      input.expectedPlanId &&
+      input.subscription.id &&
+      input.subscription.external_reference === input.expectedExternalReference &&
+      input.subscription.preapproval_plan_id === input.expectedPlanId &&
+      (input.requireBoundSubscription
+        ? Boolean(input.expectedSubscriptionId && input.subscription.id === input.expectedSubscriptionId)
+        : !input.expectedSubscriptionId || input.subscription.id === input.expectedSubscriptionId),
+  );
+}
