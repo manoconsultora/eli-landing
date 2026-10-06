@@ -60,9 +60,10 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.match(source, /title="Verificá tu email"/);
   assert.match(source, /¡Tu cuenta fue activada!/);
   assert.match(source, /Bienvenido\/a a ELI/);
-  assert.match(source, /Continuá y elegí tu plan/);
+  assert.match(source, /Continuar con mi primer consorcio/);
   assert.match(source, /callbackReturnRef\.current/);
-  assert.match(source, /function PlanSelection/);
+  assert.doesNotMatch(source, /function PlanSelection/);
+  assert.match(source, /title="Elegí tu plan"/);
   assert.match(source, /payment\?\.operationalReady \? "Todo listo!" : "Pago aprobado, activación pendiente"/);
   assert.match(source, /step === steps\.length - 1 && operationalReady/);
   assert.doesNotMatch(source, /sessionStorage\.setItem\([^;]*cardToken/s);

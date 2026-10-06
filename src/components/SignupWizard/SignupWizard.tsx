@@ -131,7 +131,6 @@ export default function SignupWizard() {
   const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
-  const [showPlanSelection, setShowPlanSelection] = useState(() => searchParams.get("eli_activation_continue") === "1");
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
@@ -521,16 +520,9 @@ export default function SignupWizard() {
   }, [emailIsVerified, hydrated, postActivation, step]);
 
   useEffect(() => {
-    if (searchParams.get("eli_activation_continue") === "1") {
-      callbackReturnRef.current = false;
-      setPostActivation(false);
-      setShowPlanSelection(true);
-      return;
-    }
     if (searchParams.get("eli_activation_resume") === "1") {
       callbackReturnRef.current = false;
       setPostActivation(false);
-      setShowPlanSelection(false);
       setStep(2);
     }
   }, [searchParams]);
@@ -660,15 +652,6 @@ export default function SignupWizard() {
 
   if (postActivation) {
     return <ActivationWelcome plan={data.plan} />;
-  }
-
-  if (showPlanSelection) {
-    return (
-      <PlanSelection
-        plan={data.plan}
-        onPlanChange={(plan) => update("plan", plan)}
-      />
-    );
   }
 
   return (
@@ -844,7 +827,7 @@ export default function SignupWizard() {
                 )}
 
                 {step === 3 && (
-                  <StepShell title="Tu alta ELI" subtitle="Revisá tu plan y completá el pago seguro." compact>
+                  <StepShell title="Elegí tu plan" subtitle="Seleccioná tu plan y completá el pago seguro." compact>
                     <div className="[perspective:1800px]">
                       <div
                         className="relative grid [transform-style:preserve-3d]"
@@ -1199,57 +1182,13 @@ function ActivationWelcome({ plan }: { plan: PlanSlug }) {
         <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">¡Tu cuenta fue activada!</h1>
         <p className="mt-3 text-xl font-semibold text-[#323159]">Bienvenido/a a ELI</p>
         <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
-          Tu email ya está confirmado. Elegí el plan que mejor acompaña a tu administración para continuar.
+          Tu email ya está confirmado. Completá los datos de tu primer consorcio para continuar.
         </p>
         <Link
-          href={`/onboarding?eli_activation_continue=1&plan=${plan}`}
+          href={`/onboarding?eli_activation_resume=1&plan=${plan}`}
           className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
         >
-          Continuá y elegí tu plan <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
-        </Link>
-      </section>
-    </main>
-  );
-}
-
-function PlanSelection({
-  plan,
-  onPlanChange,
-}: {
-  plan: PlanSlug;
-  onPlanChange: (plan: PlanSlug) => void;
-}) {
-  return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
-      <section className="w-full max-w-2xl rounded-[32px] bg-white p-7 shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Continuá tu alta</p>
-        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em]">Elegí tu plan</h1>
-        <p className="mt-2 text-sm text-[#323159]/65">Después completá los datos de tu primer consorcio y revisá el checkout.</p>
-        <div className="mt-7 grid gap-3 sm:grid-cols-2">
-          {tiers.filter((tier) => tier.action === "onboarding").map((tier) => {
-            const selected = tier.slug === plan;
-            return (
-              <button
-                key={tier.slug}
-                type="button"
-                onClick={() => onPlanChange(tier.slug as PlanSlug)}
-                aria-pressed={selected}
-                className={`rounded-[20px] border p-5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20 ${selected ? "border-[#2346DD] bg-[#F1F4FF]" : "border-[#323159]/10 bg-white hover:border-[#2346DD]/35"}`}
-              >
-                <span className="flex items-center justify-between gap-3 font-semibold">
-                  {tier.slug === "professional" ? "Profesional" : tier.name}
-                  <span className={`h-5 w-5 rounded-full border ${selected ? "border-[#2346DD] bg-[#2346DD]" : "border-[#323159]/20"}`} aria-hidden="true" />
-                </span>
-                <span className="mt-3 block text-sm text-[#323159]/65">{tier.features[0]}</span>
-              </button>
-            );
-          })}
-        </div>
-        <Link
-          href={`/onboarding?eli_activation_resume=1&plan=${plan}`}
-          className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-[17px] bg-[#2346DD] px-5 text-sm font-semibold text-white transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
-        >
-          Continuar con mi primer consorcio <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+          Continuar con mi primer consorcio <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
         </Link>
       </section>
     </main>
