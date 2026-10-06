@@ -33,6 +33,7 @@ import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
 import {
   authReturnParam,
   authReturnStorageKey,
+  buildLandingAuthCallbackUrl,
   parseAuthReturn,
   pruneAuthReturns,
   serializeAuthReturn,
@@ -536,14 +537,11 @@ export default function SignupWizard() {
         setSignInNotice("No pudimos conservar tus datos en este navegador. Permití el almacenamiento local y solicitá el enlace nuevamente.");
         return;
       }
-      const redirectUrl = new URL(window.location.href);
-      redirectUrl.searchParams.delete("code");
-      redirectUrl.searchParams.delete("sb_flow_id");
-      redirectUrl.searchParams.set("plan", data.plan);
-      redirectUrl.searchParams.set(authReturnParam, draftId);
       const { error } = await authClient.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: redirectUrl.toString() },
+        options: {
+          emailRedirectTo: buildLandingAuthCallbackUrl(window.location.origin, data.plan, draftId),
+        },
       });
       if (error) {
         window.localStorage.removeItem(draftKey);

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authReturnStoragePrefix, parseAuthReturn, pruneAuthReturns, serializeAuthReturn } from "../src/components/SignupWizard/auth-return.ts";
+import {
+  authReturnParam,
+  authReturnStoragePrefix,
+  buildLandingAuthCallbackUrl,
+  parseAuthReturn,
+  pruneAuthReturns,
+  serializeAuthReturn,
+} from "../src/components/SignupWizard/auth-return.ts";
 
 const now = 1_800_000_000_000;
 const data = {
@@ -13,6 +20,19 @@ const data = {
   plan: "professional",
 };
 const nonce = "checkout-nonce-local-0001";
+
+test("authentication callback always returns to the current Landing origin", () => {
+  const callback = new URL(buildLandingAuthCallbackUrl(
+    "https://eli-landing-git-feat-ob-pay-01-0d2e29-manoconsultoras-projects.vercel.app",
+    "professional",
+    "00000000-0000-4000-8000-000000000001",
+  ));
+  assert.equal(callback.origin, "https://eli-landing-git-feat-ob-pay-01-0d2e29-manoconsultoras-projects.vercel.app");
+  assert.equal(callback.pathname, "/onboarding");
+  assert.equal(callback.searchParams.get("plan"), "professional");
+  assert.equal(callback.searchParams.get(authReturnParam), "00000000-0000-4000-8000-000000000001");
+  assert.notEqual(callback.hostname, "elidesk.ma-no.work");
+});
 
 test("authentication return preserves the wizard data, verification step and nonce", () => {
   const draft = parseAuthReturn(serializeAuthReturn(data, nonce, now), now + 1000);

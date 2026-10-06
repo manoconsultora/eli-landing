@@ -12,6 +12,14 @@ export const authReturnParam = "eli_signup_return";
 export const authReturnStoragePrefix = "eli-signup-wizard-auth-return:";
 const lifetimeMs = 30 * 60 * 1000;
 
+/** Build the Landing callback without relying on Supabase's shared Site URL. */
+export function buildLandingAuthCallbackUrl(origin: string, plan: WizardData["plan"], draftId: string) {
+  const callbackUrl = new URL("/onboarding", origin);
+  callbackUrl.searchParams.set("plan", plan);
+  callbackUrl.searchParams.set(authReturnParam, draftId);
+  return callbackUrl.toString();
+}
+
 type AuthReturnDraft = {
   version: 1;
   expiresAt: number;
