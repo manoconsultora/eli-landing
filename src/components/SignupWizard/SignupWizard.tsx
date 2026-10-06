@@ -100,7 +100,8 @@ export default function SignupWizard() {
   const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
   const requestedPlan = searchParams.get("plan");
-  const [step, setStep] = useState(0);
+  const resumeToConsortium = searchParams.get("eli_activation_resume") === "1";
+  const [step, setStep] = useState(resumeToConsortium ? 2 : 0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [data, setData] = useState<WizardData>(() => ({
     ...initialData,
@@ -129,8 +130,8 @@ export default function SignupWizard() {
   const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
   const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
-  const [postActivation, setPostActivation] = useState(false);
-  const [showPlanSelection, setShowPlanSelection] = useState(false);
+  const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
+  const [showPlanSelection] = useState(() => searchParams.get("eli_activation_continue") === "1");
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
@@ -170,7 +171,7 @@ export default function SignupWizard() {
       let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
-      callbackReturnRef.current = Boolean(code && callbackUrl.searchParams.has(authReturnParam));
+      callbackReturnRef.current = Boolean(code);
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
         callbackUrl.searchParams.delete("code");
@@ -303,7 +304,7 @@ export default function SignupWizard() {
         parsed.step >= 0 &&
         parsed.step < steps.length
       ) {
-        setStep(parsed.step > 3 && !parsed.payment ? 2 : parsed.step);
+        setStep(resumeToConsortium ? 2 : parsed.step > 3 && !parsed.payment ? 2 : parsed.step);
       }
     } catch {
       window.sessionStorage.removeItem(storageKey);
@@ -313,7 +314,7 @@ export default function SignupWizard() {
     } finally {
       setHydrated(true);
     }
-  }, [requestedPlan]);
+  }, [requestedPlan, resumeToConsortium]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -519,17 +520,6 @@ export default function SignupWizard() {
     );
   }, [emailIsVerified, hydrated, postActivation, step]);
 
-  function continueAfterActivation() {
-    callbackReturnRef.current = false;
-    setPostActivation(false);
-    setShowPlanSelection(true);
-  }
-
-  function continueAfterPlanSelection() {
-    setShowPlanSelection(false);
-    navigate(2, 1);
-  }
-
   function openDesk() {
     const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
     if (deskUrl && payment?.active) {
@@ -654,7 +644,7 @@ export default function SignupWizard() {
   }
 
   if (postActivation) {
-    return <ActivationWelcome onContinue={continueAfterActivation} />;
+    return <ActivationWelcome plan={data.plan} />;
   }
 
   if (showPlanSelection) {
@@ -662,7 +652,6 @@ export default function SignupWizard() {
       <PlanSelection
         plan={data.plan}
         onPlanChange={(plan) => update("plan", plan)}
-        onContinue={continueAfterPlanSelection}
       />
     );
   }
@@ -1186,7 +1175,7 @@ export default function SignupWizard() {
   );
 }
 
-function ActivationWelcome({ onContinue }: { onContinue: () => void }) {
+function ActivationWelcome({ plan }: { plan: PlanSlug }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
       <section className="w-full max-w-xl rounded-[32px] bg-white p-7 text-center shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-12">
@@ -1197,13 +1186,12 @@ function ActivationWelcome({ onContinue }: { onContinue: () => void }) {
         <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
           Tu email ya está confirmado. Elegí el plan que mejor acompaña a tu administración para continuar.
         </p>
-        <button
-          type="button"
-          onClick={onContinue}
+        <Link
+          href={`/onboarding?eli_activation_continue=1&plan=${plan}`}
           className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
         >
           Continuá y elegí tu plan <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
-        </button>
+        </Link>
       </section>
     </main>
   );
@@ -1212,11 +1200,9 @@ function ActivationWelcome({ onContinue }: { onContinue: () => void }) {
 function PlanSelection({
   plan,
   onPlanChange,
-  onContinue,
 }: {
   plan: PlanSlug;
   onPlanChange: (plan: PlanSlug) => void;
-  onContinue: () => void;
 }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
@@ -1244,13 +1230,12 @@ function PlanSelection({
             );
           })}
         </div>
-        <button
-          type="button"
-          onClick={onContinue}
+        <Link
+          href={`/onboarding?eli_activation_resume=1&plan=${plan}`}
           className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-[17px] bg-[#2346DD] px-5 text-sm font-semibold text-white transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
         >
           Continuar con mi primer consorcio <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-        </button>
+        </Link>
       </section>
     </main>
   );

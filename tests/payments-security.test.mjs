@@ -67,3 +67,13 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.match(source, /step === steps\.length - 1 && operationalReady/);
   assert.doesNotMatch(source, /sessionStorage\.setItem\([^;]*cardToken/s);
 });
+
+test("the auth callback is wired through both the App Shell and onboarding route", async () => {
+  const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+  const onboarding = await readFile(new URL("../src/app/onboarding/page.tsx", import.meta.url), "utf8");
+  assert.match(home, /params\.code/);
+  assert.match(home, /<SignupWizard \/>/);
+  assert.match(home, /Suspense/);
+  assert.match(onboarding, /import SignupWizard/);
+  assert.match(onboarding, /<SignupWizard \/>/);
+});

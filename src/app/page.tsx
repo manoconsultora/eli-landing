@@ -10,8 +10,22 @@ import Stats from "@/components/Stats";
 import CTA from "@/components/CTA";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
+import SignupWizard from "@/components/SignupWizard/SignupWizard";
 
-const HomePage: React.FC = () => {
+const HomePage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) => {
+  const params = await searchParams;
+  if (typeof params.code === "string" && params.code.length > 0) {
+    return (
+      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#E9EEFF]">Preparando ELI…</div>}>
+        <SignupWizard />
+      </Suspense>
+    );
+  }
+
   return (
     <>
       <Header />
@@ -50,3 +64,4 @@ const HomePage: React.FC = () => {
 };
 
 export default HomePage;
+import { Suspense } from "react";
