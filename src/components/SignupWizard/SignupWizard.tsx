@@ -123,10 +123,14 @@ export default function SignupWizard() {
     email?: string;
     account?: AccountInspection;
     notice?: string;
+    activatedViaCallback?: boolean;
   }> | null>(null);
+  const callbackReturnRef = useRef(false);
   const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
   const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
+  const [postActivation, setPostActivation] = useState(false);
+  const [showPlanSelection, setShowPlanSelection] = useState(false);
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
@@ -166,6 +170,7 @@ export default function SignupWizard() {
       let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
+      callbackReturnRef.current = Boolean(code && callbackUrl.searchParams.has(authReturnParam));
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
         callbackUrl.searchParams.delete("code");
@@ -185,10 +190,14 @@ export default function SignupWizard() {
         cache: "no-store",
       });
       if (!response.ok) {
-        return { email, notice: "No pudimos verificar tus administraciones. Intentá nuevamente." };
+        return {
+          email,
+          notice: "No pudimos verificar tus administraciones. Intentá nuevamente.",
+          activatedViaCallback: callbackReturnRef.current,
+        };
       }
       const result = (await response.json()) as { account?: AccountInspection };
-      return { email, account: result.account, notice };
+      return { email, account: result.account, notice, activatedViaCallback: callbackReturnRef.current };
     })();
     void authRestoreRef.current.then((result) => {
       if (cancelled) return;
@@ -197,6 +206,7 @@ export default function SignupWizard() {
         setVerifiedEmail(result.email);
         setData((current) => ({ ...current, email: result.email! }));
       }
+      if (result.activatedViaCallback) setPostActivation(true);
       if (!result.account) return;
       setAccount(result.account);
       if (result.account.pending.length + result.account.organizations.length === 1) {
@@ -499,7 +509,7 @@ export default function SignupWizard() {
   }
 
   useEffect(() => {
-    if (!hydrated || step !== 1 || !emailIsVerified) return;
+    if (!hydrated || step !== 1 || !emailIsVerified || postActivation || callbackReturnRef.current) return;
     setDirection(1);
     setStep(2);
     setAttempted(false);
@@ -507,7 +517,18 @@ export default function SignupWizard() {
       { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: undefined },
       "",
     );
-  }, [emailIsVerified, hydrated, step]);
+  }, [emailIsVerified, hydrated, postActivation, step]);
+
+  function continueAfterActivation() {
+    callbackReturnRef.current = false;
+    setPostActivation(false);
+    setShowPlanSelection(true);
+  }
+
+  function continueAfterPlanSelection() {
+    setShowPlanSelection(false);
+    navigate(2, 1);
+  }
 
   function openDesk() {
     const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
@@ -630,6 +651,20 @@ export default function SignupWizard() {
     }
     setPayment(result.checkout);
     navigate(result.checkout.paymentApproved ? 5 : 4, 1);
+  }
+
+  if (postActivation) {
+    return <ActivationWelcome onContinue={continueAfterActivation} />;
+  }
+
+  if (showPlanSelection) {
+    return (
+      <PlanSelection
+        plan={data.plan}
+        onPlanChange={(plan) => update("plan", plan)}
+        onContinue={continueAfterPlanSelection}
+      />
+    );
   }
 
   return (
@@ -1147,6 +1182,76 @@ export default function SignupWizard() {
           )}
         </section>
       </div>
+    </main>
+  );
+}
+
+function ActivationWelcome({ onContinue }: { onContinue: () => void }) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
+      <section className="w-full max-w-xl rounded-[32px] bg-white p-7 text-center shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-12">
+        <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
+        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Cuenta activada</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">¡Tu cuenta fue activada!</h1>
+        <p className="mt-3 text-xl font-semibold text-[#323159]">Bienvenido/a a ELI</p>
+        <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
+          Tu email ya está confirmado. Elegí el plan que mejor acompaña a tu administración para continuar.
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
+        >
+          Continuá y elegí tu plan <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function PlanSelection({
+  plan,
+  onPlanChange,
+  onContinue,
+}: {
+  plan: PlanSlug;
+  onPlanChange: (plan: PlanSlug) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
+      <section className="w-full max-w-2xl rounded-[32px] bg-white p-7 shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Continuá tu alta</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em]">Elegí tu plan</h1>
+        <p className="mt-2 text-sm text-[#323159]/65">Después completá los datos de tu primer consorcio y revisá el checkout.</p>
+        <div className="mt-7 grid gap-3 sm:grid-cols-2">
+          {tiers.filter((tier) => tier.action === "onboarding").map((tier) => {
+            const selected = tier.slug === plan;
+            return (
+              <button
+                key={tier.slug}
+                type="button"
+                onClick={() => onPlanChange(tier.slug as PlanSlug)}
+                aria-pressed={selected}
+                className={`rounded-[20px] border p-5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20 ${selected ? "border-[#2346DD] bg-[#F1F4FF]" : "border-[#323159]/10 bg-white hover:border-[#2346DD]/35"}`}
+              >
+                <span className="flex items-center justify-between gap-3 font-semibold">
+                  {tier.slug === "professional" ? "Profesional" : tier.name}
+                  <span className={`h-5 w-5 rounded-full border ${selected ? "border-[#2346DD] bg-[#2346DD]" : "border-[#323159]/20"}`} aria-hidden="true" />
+                </span>
+                <span className="mt-3 block text-sm text-[#323159]/65">{tier.features[0]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-[17px] bg-[#2346DD] px-5 text-sm font-semibold text-white transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
+        >
+          Continuar con mi primer consorcio <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+        </button>
+      </section>
     </main>
   );
 }
