@@ -69,6 +69,20 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.doesNotMatch(source, /sessionStorage\.setItem\([^;]*cardToken/s);
 });
 
+test("checkout copy stays customer-facing while account validation remains silent", async () => {
+  const source = await readFile(new URL("../src/components/SignupWizard/SignupWizard.tsx", import.meta.url), "utf8");
+  const checkout = source.split("{step === 3 && (")[1]?.split("{step === 4 && (")[0] ?? "";
+  assert.doesNotMatch(checkout, /Verificando si ya existe|variables server-side|configuración del checkout para este entorno/);
+  assert.match(checkout, /Preparando tu checkout/);
+  assert.match(checkout, /Elegí tu plan/);
+
+  const card = await readFile(new URL("../src/components/SignupWizard/MercadoPagoSubscriptionCheckout.tsx", import.meta.url), "utf8");
+  assert.match(card, /data-payment-card/);
+  assert.match(card, /form-checkout__cardNumber/);
+  assert.match(card, /from-\[#F3F4F2\]/);
+  assert.match(card, /onToken/);
+});
+
 test("the auth callback is wired through both the App Shell and onboarding route", async () => {
   const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
   const onboarding = await readFile(new URL("../src/app/onboarding/page.tsx", import.meta.url), "utf8");

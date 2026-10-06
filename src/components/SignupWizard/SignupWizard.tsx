@@ -918,10 +918,9 @@ export default function SignupWizard() {
                           inert={step3View !== "payment"}
                           data-step3-module-back
                         >
-                          <div ref={step3PaymentContentRef} className="grid gap-3 p-4 sm:p-5">
+                          <div ref={step3PaymentContentRef} className="grid gap-3 p-3 sm:p-4">
                             <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
                               <div className="min-w-0">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2346DD]">Paso 3B</p>
                               <h3 id="step3-payment-heading" className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#323159]">Pago seguro</h3>
                               <button
                                 type="button"
@@ -949,11 +948,11 @@ export default function SignupWizard() {
                                 <p className="mt-0.5 max-w-[320px] truncate text-xs text-[#323159]/55">{data.administrationName} · {data.buildingName}</p>
                               </div>
                             </div>
-                            <section className="grid gap-3 rounded-[20px] border border-[#323159]/10 bg-white p-4" aria-label="Estado de la cuenta">
+                            <section className="grid gap-3" aria-label="Administración">
                               {account && accountEntries > 0 && (
                                 <>
                                   <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
-                                    Revisá la administración asociada a esta cuenta
+                                    Elegí la administración a vincular
                                     <select
                                       id="existing-organization"
                                       value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
@@ -993,10 +992,7 @@ export default function SignupWizard() {
                                 </>
                               )}
                               {emailIsVerified && !account && (
-                                <p className="text-sm text-[#323159]/65" role="status">Verificando si ya existe una administración vinculada antes de habilitar el inicio del pago…</p>
-                              )}
-                              {account && accountEntries === 0 && (
-                                <p className="text-sm text-emerald-700" role="status">No encontramos otra administración asociada. Podés continuar con esta alta.</p>
+                                <p className="text-xs text-[#323159]/55" role="status">Preparando tu checkout…</p>
                               )}
                               {selectedExisting && (
                                 <p className="text-sm text-amber-900" role="status">
@@ -1010,13 +1006,9 @@ export default function SignupWizard() {
                               )}
                             </section>
                             {checkoutConfiguration && !checkoutConfiguration.ready && (
-                              <div className="rounded-[18px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
-                                <p className="font-semibold">Falta configuración del checkout para este entorno.</p>
-                                <p className="mt-1">Revisá estas variables server-side:</p>
-                                <ul className="mt-1 list-inside list-disc">{checkoutConfiguration.missing.map((name) => <li key={name}><code>{name}</code></li>)}</ul>
-                              </div>
+                              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">El checkout no está disponible en este entorno.</p>
                             )}
-                            {!checkoutConfiguration && <p className="text-sm text-[#323159]/65" role="status">Verificando la configuración del checkout…</p>}
+                            {!checkoutConfiguration && <p className="text-xs text-[#323159]/55" role="status">Preparando tu checkout…</p>}
                             {hasOpenedPayment && (
                               <>
                                 <MercadoPagoSubscriptionCheckout
@@ -1029,11 +1021,8 @@ export default function SignupWizard() {
                                   disabled={!checkoutCanStart}
                                   onToken={createSubscription}
                                 />
-                                {!checkoutCanStart && checkoutConfiguration?.ready && emailIsVerified && !account && (
-                                  <p className="text-sm text-[#323159]/70">Esperá a que ELI termine de verificar la cuenta y las administraciones asociadas.</p>
-                                )}
                                 {!checkoutCanStart && checkoutConfiguration?.ready && selectedPending && !pendingCanStart && (
-                                  <p className="text-sm text-amber-900">Esta alta requiere revisión antes de iniciar el pago.</p>
+                                  <p className="text-sm text-amber-900">Esta administración requiere revisión antes de iniciar el pago.</p>
                                 )}
                                 {!checkoutCanStart && checkoutConfiguration?.ready && account && accountEntries > 0 && !selectedOrganizationId && !distinctAdministration && (
                                   <p className="text-sm text-amber-900">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>

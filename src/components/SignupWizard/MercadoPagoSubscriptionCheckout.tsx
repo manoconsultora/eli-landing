@@ -61,33 +61,33 @@ export default function MercadoPagoSubscriptionCheckout({
           id: "form-checkout__cardNumber",
           placeholder: "Número de tarjeta",
           style: {
-            color: "#D7DDE7",
+            color: "#323159",
             fontFamily: "Arial, sans-serif",
             fontSize: "15px",
             fontWeight: "500",
-            placeholderColor: "#AEB8C8",
+            placeholderColor: "#7D8190",
           },
         },
         expirationDate: {
           id: "form-checkout__expirationDate",
           placeholder: "MM/AA",
           style: {
-            color: "#D7DDE7",
+            color: "#323159",
             fontFamily: "Arial, sans-serif",
             fontSize: "13px",
             fontWeight: "500",
-            placeholderColor: "#AEB8C8",
+            placeholderColor: "#7D8190",
           },
         },
         securityCode: {
           id: "form-checkout__securityCode",
           placeholder: "CVV",
           style: {
-            color: "#D7DDE7",
+            color: "#323159",
             fontFamily: "Arial, sans-serif",
             fontSize: "14px",
             fontWeight: "500",
-            placeholderColor: "#AEB8C8",
+            placeholderColor: "#7D8190",
           },
         },
         cardholderName: { id: "form-checkout__cardholderName", placeholder: "Nombre como figura en la tarjeta" },
@@ -169,58 +169,58 @@ export default function MercadoPagoSubscriptionCheckout({
           <div className="mx-auto w-full max-w-[420px] lg:row-span-2 lg:my-auto">
             <div className="[perspective:1200px]">
               <div
-                className="relative aspect-[1.586/1] w-full rounded-[22px] shadow-[0_22px_50px_rgba(21,34,91,0.24)] transition-transform duration-700 [transform-style:preserve-3d] motion-reduce:transition-none"
+                className="relative aspect-[1.586/1] w-full rounded-[22px] shadow-[0_18px_36px_rgba(50,49,89,0.16)] transition-transform duration-700 [transform-style:preserve-3d] motion-reduce:transition-none"
                 style={{ transform: `rotateY(${showCardBack ? 180 : 0}deg)` }}
                 data-payment-card
               >
                 <section
-                  className="absolute inset-0 flex flex-col overflow-hidden rounded-[22px] bg-gradient-to-br from-[#344fc2] via-[#223899] to-[#111e59] p-4 text-white sm:p-5 [backface-visibility:hidden]"
+                  className="absolute inset-0 flex flex-col overflow-hidden rounded-[22px] bg-gradient-to-br from-[#F3F4F2] via-[#D9DCD9] to-[#BFC4C3] p-4 text-[#323159] sm:p-5 [backface-visibility:hidden]"
                   aria-label="Frente de la tarjeta"
                   aria-hidden={showCardBack}
                   inert={showCardBack}
                 >
                   <div className="flex items-start justify-between">
-                    <span className="text-lg font-bold tracking-[0.18em]">ELI</span>
-                    <div className="relative h-8 w-10 overflow-hidden rounded-md border border-[#f1d99a]/75 bg-gradient-to-br from-[#f7e7b8] via-[#d5be82] to-[#9c8958] shadow-inner sm:h-9 sm:w-12" aria-hidden="true">
-                      <span className="absolute inset-y-0 left-1/3 w-px bg-[#8f7d51]/60" />
-                      <span className="absolute inset-y-0 left-2/3 w-px bg-[#8f7d51]/60" />
-                      <span className="absolute inset-x-0 top-1/2 h-px bg-[#8f7d51]/60" />
+                    <span className="text-lg font-bold tracking-[0.18em] text-[#5D6266]">ELI</span>
+                    <div className="relative h-8 w-10 overflow-hidden rounded-md border border-[#9AA09F]/70 bg-gradient-to-br from-[#E4E7E4] via-[#BFC5C3] to-[#9FA6A4] shadow-inner sm:h-9 sm:w-12" aria-hidden="true">
+                      <span className="absolute inset-y-0 left-1/3 w-px bg-[#7F8784]/50" />
+                      <span className="absolute inset-y-0 left-2/3 w-px bg-[#7F8784]/50" />
+                      <span className="absolute inset-x-0 top-1/2 h-px bg-[#7F8784]/50" />
                     </div>
                   </div>
 
                   <div className="mt-auto">
-                    <p id="card-number-label" className="mb-1 text-[9px] font-medium uppercase tracking-[0.16em] text-white/65">Número de tarjeta</p>
-                    <div id="form-checkout__cardNumber" role="group" aria-labelledby="card-number-label" data-mp-secure-field="cardNumber" className="flex h-8 max-h-8 items-center overflow-hidden rounded-md border border-white/20 bg-white/8 px-2.5 py-1 text-sm text-white focus-within:border-white/70 focus-within:ring-2 focus-within:ring-white/25 sm:h-9 sm:max-h-9 sm:text-base" />
+                    <p id="card-number-label" className="mb-1 text-[9px] font-medium uppercase tracking-[0.16em] text-[#5D6266]/70">Número de tarjeta</p>
+                    <div id="form-checkout__cardNumber" role="group" aria-labelledby="card-number-label" data-mp-secure-field="cardNumber" className="flex h-8 max-h-8 items-center overflow-hidden rounded-md border border-[#858C89]/45 bg-white/35 px-2.5 py-1 text-sm text-[#323159] focus-within:border-[#2346DD]/55 focus-within:ring-2 focus-within:ring-[#2346DD]/15 sm:h-9 sm:max-h-9 sm:text-base" />
                     <div className="mt-2.5 grid grid-cols-[1fr_auto] items-end gap-3 sm:mt-3">
                       <label className="min-w-0">
-                        <span className="mb-1 block text-[8px] font-medium uppercase tracking-[0.14em] text-white/60">Titular</span>
-                        <input id="form-checkout__cardholderName" placeholder="Nombre como figura en la tarjeta" autoComplete="cc-name" className="min-h-7 w-full min-w-0 border-0 border-b border-white/30 bg-transparent px-0 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#D7DDE7] outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-[#AEB8C8] focus:border-[#D7DDE7] sm:text-xs" />
+                        <span className="mb-1 block text-[8px] font-medium uppercase tracking-[0.14em] text-[#5D6266]/70">Titular</span>
+                        <input id="form-checkout__cardholderName" placeholder="Nombre como figura en la tarjeta" autoComplete="cc-name" className="min-h-7 w-full min-w-0 border-0 border-b border-[#858C89]/45 bg-transparent px-0 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#323159] outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-[#7D8190] focus:border-[#2346DD]/55 sm:text-xs" />
                       </label>
                       <div className="w-[76px]">
-                        <p id="card-expiry-label" className="mb-1 text-[8px] font-medium uppercase tracking-[0.14em] text-white/60">Vence</p>
-                        <div id="form-checkout__expirationDate" role="group" aria-labelledby="card-expiry-label" data-mp-secure-field="expirationDate" className="flex h-7 max-h-7 items-center overflow-hidden border-b border-white/30 px-1 py-1 text-[10px] text-white sm:text-xs" />
+                        <p id="card-expiry-label" className="mb-1 text-[8px] font-medium uppercase tracking-[0.14em] text-[#5D6266]/70">Vence</p>
+                        <div id="form-checkout__expirationDate" role="group" aria-labelledby="card-expiry-label" data-mp-secure-field="expirationDate" className="flex h-7 max-h-7 items-center overflow-hidden border-b border-[#858C89]/45 px-1 py-1 text-[10px] text-[#323159] sm:text-xs" />
                       </div>
                     </div>
                   </div>
-                  <span className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full border border-white/10" aria-hidden="true" />
+                  <span className="pointer-events-none absolute -bottom-16 -right-12 h-40 w-40 rounded-full border border-white/30" aria-hidden="true" />
                 </section>
 
                 <section
-                  className="absolute inset-0 overflow-hidden rounded-[22px] bg-gradient-to-br from-[#26377f] to-[#111b4b] text-white [backface-visibility:hidden]"
+                  className="absolute inset-0 overflow-hidden rounded-[22px] bg-gradient-to-br from-[#D9DCD9] to-[#AEB5B2] text-[#323159] [backface-visibility:hidden]"
                   style={{ transform: "rotateY(180deg)" }}
                   aria-label="Reverso de la tarjeta"
                   aria-hidden={!showCardBack}
                   inert={!showCardBack}
                 >
-                  <div className="mt-7 h-10 bg-[#101323] shadow-inner sm:mt-8 sm:h-12" aria-hidden="true" />
+                  <div className="mt-7 h-10 bg-[#737A78] shadow-inner sm:mt-8 sm:h-12" aria-hidden="true" />
                   <div className="mx-5 mt-5 grid grid-cols-[1fr_72px] items-center gap-3 sm:mx-7 sm:grid-cols-[1fr_88px]">
-                    <div className="h-8 rounded-sm bg-white/10" aria-hidden="true" />
+                    <div className="h-8 rounded-sm bg-white/35" aria-hidden="true" />
                     <div>
-                      <p id="card-cvv-label" className="mb-1 text-[8px] font-medium uppercase tracking-[0.14em] text-white/65">CVV</p>
-                      <div id="form-checkout__securityCode" role="group" aria-labelledby="card-cvv-label" data-mp-secure-field="securityCode" className="flex h-8 max-h-8 items-center overflow-hidden rounded-sm border border-white/20 bg-white/10 px-2 py-1 text-sm text-[#D7DDE7] focus-within:ring-2 focus-within:ring-[#a9baff]" />
+                      <p id="card-cvv-label" className="mb-1 text-[8px] font-medium uppercase tracking-[0.14em] text-[#5D6266]/70">CVV</p>
+                      <div id="form-checkout__securityCode" role="group" aria-labelledby="card-cvv-label" data-mp-secure-field="securityCode" className="flex h-8 max-h-8 items-center overflow-hidden rounded-sm border border-[#858C89]/45 bg-white/35 px-2 py-1 text-sm text-[#323159] focus-within:ring-2 focus-within:ring-[#2346DD]/20" />
                     </div>
                   </div>
-                  <p className="absolute bottom-4 left-5 text-[9px] tracking-[0.14em] text-white/55 sm:left-7">ELI · PAGO SEGURO</p>
+                  <p className="absolute bottom-4 left-5 text-[9px] tracking-[0.14em] text-[#5D6266]/65 sm:left-7">ELI · PAGO SEGURO</p>
                 </section>
               </div>
             </div>
