@@ -41,6 +41,7 @@ import {
 
 const steps = [
   "Empecemos",
+  "Verificar email",
   "Primer consorcio",
   "Checkout",
   "Procesando pago",
@@ -227,7 +228,7 @@ export default function SignupWizard() {
   }, []);
 
   useLayoutEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
 
     const content = step3View === "review"
       ? step3ReviewContentRef.current
@@ -269,7 +270,7 @@ export default function SignupWizard() {
       const parsed = JSON.parse(saved) as {
         data?: Partial<WizardData>;
         step?: number;
-        eliSignupSubstep?: "review" | "payment";
+        eliSignupSubstep?: "verification" | "review" | "payment";
         checkoutNonce?: string;
         payment?: PaymentSession;
       };
@@ -291,7 +292,7 @@ export default function SignupWizard() {
         parsed.step >= 0 &&
         parsed.step < steps.length
       ) {
-        setStep(parsed.step > 2 && !parsed.payment ? 2 : parsed.step);
+        setStep(parsed.step > 3 && !parsed.payment ? 2 : parsed.step);
       }
     } catch {
       window.sessionStorage.removeItem(storageKey);
@@ -312,7 +313,7 @@ export default function SignupWizard() {
   }, [checkoutNonce, data, hydrated, payment, step, step3View]);
 
   useEffect(() => {
-    if (step !== 3 || !paymentAttemptId || paymentApproved) return;
+    if (step !== 4 || !paymentAttemptId || paymentApproved) return;
     let cancelled = false;
     let cycle = 0;
     const refresh = async () => {
@@ -336,7 +337,7 @@ export default function SignupWizard() {
       const result = (await response.json()) as { checkout?: PaymentSession };
       if (!result.checkout) return;
       setPayment((current) => ({ ...result.checkout!, statusToken: current?.statusToken ?? paymentStatusToken }));
-      if (result.checkout.paymentApproved) navigate(4, 1);
+      if (result.checkout.paymentApproved) navigate(5, 1);
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 3000);
@@ -353,7 +354,7 @@ export default function SignupWizard() {
       | { eliSignupStep?: number; eliSignupSubstep?: "review" | "payment" }
       | null;
 
-    const expectedSubstep = step === 2 ? step3View : undefined;
+    const expectedSubstep = step === 3 ? step3View : undefined;
     if (
       currentState?.eliSignupStep !== step ||
       currentState?.eliSignupSubstep !== expectedSubstep
@@ -375,11 +376,11 @@ export default function SignupWizard() {
       setDirection(nextStep < step ? -1 : 1);
       setStep(nextStep);
       setStep3View(
-        nextStep === 2 && event.state?.eliSignupSubstep === "payment"
+        nextStep === 3 && event.state?.eliSignupSubstep === "payment"
           ? "payment"
           : "review",
       );
-      if (nextStep === 2 && event.state?.eliSignupSubstep === "payment") {
+      if (nextStep === 3 && event.state?.eliSignupSubstep === "payment") {
         setHasOpenedPayment(true);
       }
       setAttempted(false);
@@ -420,6 +421,7 @@ export default function SignupWizard() {
         data.responsibleName.trim() &&
         isValidEmail(data.email),
     ),
+    Boolean(emailIsVerified),
     Boolean(
       data.buildingName.trim() &&
         data.address.trim() &&
@@ -456,7 +458,7 @@ export default function SignupWizard() {
       {
         ...window.history.state,
         eliSignupStep: nextStep,
-        eliSignupSubstep: nextStep === 2 ? "review" : undefined,
+        eliSignupSubstep: nextStep === 3 ? "review" : undefined,
       },
       "",
     );
@@ -466,7 +468,7 @@ export default function SignupWizard() {
     setHasOpenedPayment(true);
     setStep3View("payment");
     window.history.pushState(
-      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
+      { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "payment" },
       "",
     );
   }
@@ -474,11 +476,11 @@ export default function SignupWizard() {
   function returnToPayment() {
     setHasOpenedPayment(true);
     setDirection(-1);
-    setStep(2);
+    setStep(3);
     setStep3View("payment");
     setAttempted(false);
     window.history.pushState(
-      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
+      { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "payment" },
       "",
     );
   }
@@ -494,6 +496,17 @@ export default function SignupWizard() {
     if (step === 0) return;
     window.history.back();
   }
+
+  useEffect(() => {
+    if (!hydrated || step !== 1 || !emailIsVerified) return;
+    setDirection(1);
+    setStep(2);
+    setAttempted(false);
+    window.history.pushState(
+      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: undefined },
+      "",
+    );
+  }, [emailIsVerified, hydrated, step]);
 
   function openDesk() {
     const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
@@ -588,7 +601,7 @@ export default function SignupWizard() {
         paymentApproved: selectedPending.attempt_status === "approved",
         operationalReady: false,
       });
-      navigate(selectedPending.attempt_status === "approved" ? 4 : 3, 1);
+      navigate(selectedPending.attempt_status === "approved" ? 5 : 4, 1);
       return;
     }
     const response = await fetch("/api/payments/checkout", {
@@ -618,7 +631,7 @@ export default function SignupWizard() {
       throw new Error(message);
     }
     setPayment(result.checkout);
-    navigate(result.checkout.paymentApproved ? 4 : 3, 1);
+    navigate(result.checkout.paymentApproved ? 5 : 4, 1);
   }
 
   return (
@@ -627,11 +640,11 @@ export default function SignupWizard() {
         <EditorialPanel step={step} />
 
         <section className="relative -mt-7 flex min-h-[calc(100dvh-12.5rem)] flex-col overflow-hidden rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-7 sm:px-8 lg:mt-0 lg:min-h-0 lg:rounded-[32px] lg:px-10 lg:pb-8 lg:pt-8 xl:px-14 xl:pb-6 xl:pt-10">
-          <div className={step === 4 ? "relative z-10" : ""}>
+          <div className={step === 5 ? "relative z-10" : ""}>
             <Progress currentStep={step} />
           </div>
 
-          <div className={`relative mx-auto flex w-full flex-1 flex-col ${step === 4 ? "z-10" : ""} ${step === 2 ? "max-w-[980px] pt-4 sm:pt-5 lg:pt-4" : "max-w-[760px] pt-8 sm:pt-10 lg:pt-12"}`}>
+          <div className={`relative mx-auto flex w-full flex-1 flex-col ${step === 5 ? "z-10" : ""} ${step === 3 ? "max-w-[980px] pt-4 sm:pt-5 lg:pt-4" : "max-w-[760px] pt-8 sm:pt-10 lg:pt-12"}`}>
             <AnimatePresence initial={false} custom={direction} mode="wait">
               <motion.div
                 key={step}
@@ -703,6 +716,42 @@ export default function SignupWizard() {
 
                 {step === 1 && (
                   <StepShell
+                    title="Verificá tu email"
+                    subtitle="Confirmá tu email para proteger tu cuenta y continuar con el alta."
+                  >
+                    <div className="grid gap-4 rounded-[24px] border border-[#323159]/10 bg-[#F7F8FC] p-5 sm:p-6">
+                      {emailIsVerified ? (
+                        <p className="text-sm font-semibold text-emerald-700" role="status">
+                          Email verificado: {verifiedEmail}
+                        </p>
+                      ) : (
+                        <>
+                          <div>
+                            <h3 className="font-semibold">Te enviamos un enlace a {data.email}</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-[#323159]/65">
+                              Abrilo desde cualquier pestaña o dispositivo. Tus datos y el plan elegido se conservan para que puedas volver y seguir donde dejaste.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void requestEmailSignIn()}
+                            disabled={!authConfigurationReady || !isValidEmail(data.email) || signInBusy}
+                            className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {signInBusy ? "Enviando enlace…" : signInNotice ? "Reenviar enlace" : "Enviar enlace de verificación"}
+                          </button>
+                          {!authConfigurationReady && (
+                            <p className="text-sm text-amber-900" role="status">Falta configurar Supabase Auth en este entorno.</p>
+                          )}
+                        </>
+                      )}
+                      {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
+                    </div>
+                  </StepShell>
+                )}
+
+                {step === 2 && (
+                  <StepShell
                     title="Primer consorcio"
                     subtitle="Arrancamos por el primero."
                   >
@@ -757,7 +806,7 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 2 && (
+                {step === 3 && (
                   <StepShell title="Tu alta ELI" subtitle="Revisá tu plan y completá el pago seguro." compact>
                     <div className="[perspective:1800px]">
                       <div
@@ -859,7 +908,7 @@ export default function SignupWizard() {
                                 onClick={() => {
                                   setStep3View("review");
                                   window.history.pushState(
-                                    { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "review" },
+                                    { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "review" },
                                     "",
                                   );
                                 }}
@@ -880,40 +929,7 @@ export default function SignupWizard() {
                                 <p className="mt-0.5 max-w-[320px] truncate text-xs text-[#323159]/55">{data.administrationName} · {data.buildingName}</p>
                               </div>
                             </div>
-                            <section className="grid gap-3 rounded-[20px] border border-[#323159]/10 bg-white p-4" aria-labelledby="checkout-email-heading">
-                              <div>
-                                <h4 id="checkout-email-heading" className="font-semibold">Verificá tu email antes de crear la suscripción</h4>
-                                <p className="mt-1 text-sm leading-relaxed text-[#323159]/65">
-                                  Te enviaremos un enlace para confirmar que esta cuenta te pertenece. Al volver, ELI verificará la cuenta y la administración asociada antes de iniciar cualquier cobro. Los datos del wizard se conservan; los datos y tokens de tarjeta no se guardan.
-                                </p>
-                              </div>
-                              <Field
-                                id="checkout-email"
-                                label="Email de la administración"
-                                type="email"
-                                value={data.email}
-                                onChange={updateEmail}
-                                placeholder="nombre@administracion.com"
-                                autoComplete="email"
-                                error={attempted && !isValidEmail(data.email) ? "Ingresá un email válido." : undefined}
-                              />
-                              {emailIsVerified ? (
-                                <p className="text-sm font-semibold text-emerald-700" role="status">Email verificado: {verifiedEmail}</p>
-                              ) : (
-                                <div className="grid gap-2 justify-items-start">
-                                  <button
-                                    type="button"
-                                    onClick={() => void requestEmailSignIn()}
-                                    disabled={!authConfigurationReady || !isValidEmail(data.email) || signInBusy}
-                                    className="min-h-11 rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {signInBusy ? "Enviando enlace…" : "Enviar enlace de verificación"}
-                                  </button>
-                                  {!authConfigurationReady && (
-                                    <p className="text-sm text-amber-900">Falta Supabase Auth en este entorno. Configurá NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para recibir el enlace.</p>
-                                  )}
-                                </div>
-                              )}
+                            <section className="grid gap-3 rounded-[20px] border border-[#323159]/10 bg-white p-4" aria-label="Estado de la cuenta">
                               {account && accountEntries > 0 && (
                                 <>
                                   <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
@@ -972,7 +988,6 @@ export default function SignupWizard() {
                               {account && accountEntries > 0 && !distinctAdministration && !selectedOrganizationId && (
                                 <p className="text-sm text-amber-900" role="status">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>
                               )}
-                              {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
                             </section>
                             {checkoutConfiguration && !checkoutConfiguration.ready && (
                               <div className="rounded-[18px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
@@ -994,9 +1009,6 @@ export default function SignupWizard() {
                                   disabled={!checkoutCanStart}
                                   onToken={createSubscription}
                                 />
-                                {!checkoutCanStart && checkoutConfiguration?.ready && !emailIsVerified && authConfigurationReady && (
-                                  <p className="text-sm text-[#323159]/70">Enviá el enlace y volvé aquí para verificar el email antes de continuar.</p>
-                                )}
                                 {!checkoutCanStart && checkoutConfiguration?.ready && emailIsVerified && !account && (
                                   <p className="text-sm text-[#323159]/70">Esperá a que ELI termine de verificar la cuenta y las administraciones asociadas.</p>
                                 )}
@@ -1016,7 +1028,7 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 3 && (
+                {step === 4 && (
                   <StepShell
                     title={payment?.status === "rejected" ? "Pago rechazado" : "Estamos verificando el pago"}
                     subtitle="La pantalla no activa ELI: esperamos la confirmación server-side de Mercado Pago."
@@ -1054,7 +1066,7 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 4 && (
+                {step === 5 && (
                   <StepShell
                     title={payment?.operationalReady ? "Todo listo!" : "Pago aprobado, activación pendiente"}
                     subtitle={payment?.operationalReady ? "Bienvenido a ELI." : "ELI confirmó el pago. La administración todavía no está habilitada."}
@@ -1077,23 +1089,23 @@ export default function SignupWizard() {
               onNext={() => next()}
               onDesk={openDesk}
               operationalReady={Boolean(payment?.operationalReady)}
-              hideNext={step === 2 || step === 3}
+              hideNext={step === 3 || step === 4}
             />
 
             <p
-              className={`${step === 2 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
+              className={`${step === 3 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
               aria-live="polite"
             >
               {deskNotice
                 ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
-                : step === 4
+                : step === 5
                   ? payment?.operationalReady
                     ? "Suscripción activa confirmada por ELI."
                     : "Pago aprobado; activación todavía pendiente."
                   : "No recargues la página mientras verificamos el estado."}
             </p>
           </div>
-          {step === 4 && (
+          {step === 5 && (
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 z-0 w-full overflow-hidden"
@@ -1257,7 +1269,7 @@ function EditorialPanel({ step }: { step: number }) {
             />
           </Link>
           <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
-            Paso {step + 1} de 5
+            Paso {step + 1} de 6
           </span>
         </div>
 
@@ -1494,7 +1506,7 @@ function WizardNavigation({
   ];
 
   return (
-    <div className={`${step === 4 ? "relative z-30 mt-4 flex items-center justify-between gap-3 bg-transparent px-0 py-0" : "sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8"} lg:static lg:mx-0 ${step === 2 ? "lg:mt-3" : "lg:mt-10"} ${step === 4 ? "lg:relative lg:z-30" : ""} lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none`}>
+    <div className={`${step === 5 ? "relative z-30 mt-4 flex items-center justify-between gap-3 bg-transparent px-0 py-0" : "sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8"} lg:static lg:mx-0 ${step === 3 ? "lg:mt-3" : "lg:mt-10"} ${step === 5 ? "lg:relative lg:z-30" : ""} lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none`}>
       {step === 0 ? (
         <Link
           href="/"

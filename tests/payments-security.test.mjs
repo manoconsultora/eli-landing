@@ -55,6 +55,9 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.ok(initialStep.length > 0);
   assert.doesNotMatch(initialStep, /requestEmailSignIn|authClient|verifiedEmail|signInNotice/);
   assert.match(source, /disabled=\{!checkoutCanStart\}/);
+  const checkoutStep = source.split("{step === 3 && (")[1]?.split("{step === 4 && (")[0] ?? "";
+  assert.doesNotMatch(checkoutStep, /Enviar enlace de verificación|Reenviar enlace|Verificá tu email antes/);
+  assert.match(source, /title="Verificá tu email"/);
   assert.match(source, /payment\?\.operationalReady \? "Todo listo!" : "Pago aprobado, activación pendiente"/);
   assert.match(source, /step === steps\.length - 1 && operationalReady/);
   assert.doesNotMatch(source, /sessionStorage\.setItem\([^;]*cardToken/s);

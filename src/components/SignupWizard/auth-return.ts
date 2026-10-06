@@ -16,8 +16,8 @@ type AuthReturnDraft = {
   version: 1;
   expiresAt: number;
   data: WizardData;
-  step: 2;
-  eliSignupSubstep: "payment";
+  step: 1;
+  eliSignupSubstep: "verification";
   checkoutNonce: string;
 };
 
@@ -36,8 +36,8 @@ export function serializeAuthReturn(data: WizardData, checkoutNonce: string, now
       units: data.units,
       plan: data.plan,
     },
-    step: 2,
-    eliSignupSubstep: "payment",
+    step: 1,
+    eliSignupSubstep: "verification",
     checkoutNonce,
   };
   return JSON.stringify(draft);
@@ -49,7 +49,7 @@ export function parseAuthReturn(serialized: string | null, now = Date.now()): Au
     const draft = JSON.parse(serialized);
     if (
       draft.version !== 1 || !Number.isFinite(draft.expiresAt) || draft.expiresAt <= now ||
-      draft.expiresAt > now + lifetimeMs || draft.step !== 2 || draft.eliSignupSubstep !== "payment" ||
+      draft.expiresAt > now + lifetimeMs || draft.step !== 1 || draft.eliSignupSubstep !== "verification" ||
       typeof draft.checkoutNonce !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(draft.checkoutNonce) ||
       !draft.data || !["core", "professional"].includes(draft.data.plan) ||
       !["administrationName", "responsibleName", "email", "buildingName", "address", "units"]

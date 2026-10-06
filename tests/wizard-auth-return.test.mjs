@@ -14,11 +14,11 @@ const data = {
 };
 const nonce = "checkout-nonce-local-0001";
 
-test("authentication return preserves the wizard data, payment substep and nonce", () => {
+test("authentication return preserves the wizard data, verification step and nonce", () => {
   const draft = parseAuthReturn(serializeAuthReturn(data, nonce, now), now + 1000);
   assert.deepEqual(draft.data, data);
-  assert.equal(draft.step, 2);
-  assert.equal(draft.eliSignupSubstep, "payment");
+  assert.equal(draft.step, 1);
+  assert.equal(draft.eliSignupSubstep, "verification");
   assert.equal(draft.checkoutNonce, nonce);
 });
 
