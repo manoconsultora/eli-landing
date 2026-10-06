@@ -131,7 +131,7 @@ export default function SignupWizard() {
   const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
-  const [showPlanSelection] = useState(() => searchParams.get("eli_activation_continue") === "1");
+  const [showPlanSelection, setShowPlanSelection] = useState(() => searchParams.get("eli_activation_continue") === "1");
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
@@ -519,6 +519,21 @@ export default function SignupWizard() {
       "",
     );
   }, [emailIsVerified, hydrated, postActivation, step]);
+
+  useEffect(() => {
+    if (searchParams.get("eli_activation_continue") === "1") {
+      callbackReturnRef.current = false;
+      setPostActivation(false);
+      setShowPlanSelection(true);
+      return;
+    }
+    if (searchParams.get("eli_activation_resume") === "1") {
+      callbackReturnRef.current = false;
+      setPostActivation(false);
+      setShowPlanSelection(false);
+      setStep(2);
+    }
+  }, [searchParams]);
 
   function openDesk() {
     const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
