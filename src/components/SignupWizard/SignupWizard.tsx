@@ -30,6 +30,14 @@ import {
 
 import { tiers } from "@/data/pricing";
 import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
+import {
+  authReturnParam,
+  authReturnStorageKey,
+  parseAuthReturn,
+  pruneAuthReturns,
+  serializeAuthReturn,
+  type WizardData,
+} from "./auth-return";
 
 const steps = [
   "Empecemos",
@@ -40,16 +48,6 @@ const steps = [
 ] as const;
 
 type PlanSlug = "core" | "professional";
-
-type WizardData = {
-  administrationName: string;
-  responsibleName: string;
-  email: string;
-  buildingName: string;
-  address: string;
-  units: string;
-  plan: PlanSlug;
-};
 
 const initialData: WizardData = {
   administrationName: "",
@@ -118,6 +116,14 @@ export default function SignupWizard() {
   const [payment, setPayment] = useState<PaymentSession>();
   const [paymentError, setPaymentError] = useState<string>();
   const [authClient, setAuthClient] = useState<SupabaseClient>();
+  const authClientRef = useRef<SupabaseClient | null>(null);
+  const authRestoreRef = useRef<Promise<{
+    email?: string;
+    account?: AccountInspection;
+    notice?: string;
+  }> | null>(null);
+  const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
+  const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
@@ -145,47 +151,60 @@ export default function SignupWizard() {
       setSignInNotice("Falta configurar NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para verificar el email en este entorno.");
       return;
     }
-    setAuthConfigurationReady(true);
-    const client = createClient(url, key, {
+    const client = authClientRef.current ?? createClient(url, key, {
       auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true },
     });
+    authClientRef.current = client;
+    setAuthConfigurationReady(true);
     setAuthClient(client);
     let cancelled = false;
-    const restore = async () => {
+    // Share the restore promise across effect replay. A PKCE code is single-use;
+    // React Strict Mode must not exchange it twice or consume its verifier twice.
+    authRestoreRef.current ??= (async () => {
+      let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
         callbackUrl.searchParams.delete("code");
+        callbackUrl.searchParams.delete("sb_flow_id");
+        callbackUrl.searchParams.delete(authReturnParam);
         window.history.replaceState(window.history.state, "", callbackUrl);
-        if (error) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+        if (error) notice = "No pudimos completar el ingreso. Solicitá un enlace nuevo.";
       }
       const { data: userData } = await client.auth.getUser();
-      if (cancelled || !userData.user?.email || !userData.user.email_confirmed_at) return;
+      if (!userData.user?.email || !userData.user.email_confirmed_at) return { notice };
       const email = userData.user.email.trim().toLowerCase();
-      setVerifiedEmail(email);
-      setData((current) => ({ ...current, email }));
       const { data: sessionData } = await client.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!token) return;
+      if (!token) return { notice };
       const response = await fetch("/api/payments/checkout", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      if (!response.ok || cancelled) {
-        setSignInNotice("No pudimos verificar tus administraciones. Intentá nuevamente.");
-        return;
+      if (!response.ok) {
+        return { email, notice: "No pudimos verificar tus administraciones. Intentá nuevamente." };
       }
       const result = (await response.json()) as { account?: AccountInspection };
-      if (!result.account || cancelled) return;
+      return { email, account: result.account, notice };
+    })();
+    void authRestoreRef.current.then((result) => {
+      if (cancelled) return;
+      if (result.notice) setSignInNotice(result.notice);
+      if (result.email) {
+        setVerifiedEmail(result.email);
+        setData((current) => ({ ...current, email: result.email! }));
+      }
+      if (!result.account) return;
       setAccount(result.account);
       if (result.account.pending.length + result.account.organizations.length === 1) {
         setSelectedOrganizationId(
           result.account.pending[0]?.organization_id ?? result.account.organizations[0]?.organization_id,
         );
       }
-    };
-    void restore();
+    }).catch(() => {
+      if (!cancelled) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -229,7 +248,19 @@ export default function SignupWizard() {
 
   useEffect(() => {
     try {
-      const saved = window.sessionStorage.getItem(storageKey);
+      if (!authDraftReadRef.current) {
+        authDraftReadRef.current = true;
+        pruneAuthReturns(window.localStorage);
+        const key = authReturnStorageKey(new URL(window.location.href).searchParams.get(authReturnParam));
+        if (key) {
+          authDraftRef.current = parseAuthReturn(window.localStorage.getItem(key));
+          window.localStorage.removeItem(key);
+          if (!authDraftRef.current) setSignInNotice("El enlace ya no conserva tus datos. Completalos nuevamente para continuar.");
+        }
+      }
+      const saved = authDraftRef.current
+        ? JSON.stringify(authDraftRef.current)
+        : window.sessionStorage.getItem(storageKey);
       if (!saved) {
         setCheckoutNonce(window.crypto.randomUUID());
         return;
@@ -483,10 +514,28 @@ export default function SignupWizard() {
     setSignInBusy(true);
     setSignInNotice(undefined);
     try {
-      await authClient.auth.signInWithOtp({
+      const draftId = window.crypto.randomUUID();
+      const draftKey = authReturnStorageKey(draftId)!;
+      try {
+        pruneAuthReturns(window.localStorage);
+        window.localStorage.setItem(draftKey, serializeAuthReturn(data, checkoutNonce));
+      } catch {
+        setSignInNotice("No pudimos conservar tus datos en este navegador. Permití el almacenamiento local y solicitá el enlace nuevamente.");
+        return;
+      }
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.searchParams.delete("code");
+      redirectUrl.searchParams.delete("sb_flow_id");
+      redirectUrl.searchParams.set("plan", data.plan);
+      redirectUrl.searchParams.set(authReturnParam, draftId);
+      const { error } = await authClient.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: window.location.href },
+        options: { emailRedirectTo: redirectUrl.toString() },
       });
+      if (error) {
+        window.localStorage.removeItem(draftKey);
+        throw error;
+      }
       setSignInNotice("Si este email puede ingresar, vas a recibir un enlace para continuar.");
     } catch {
       setSignInNotice("No pudimos enviar el enlace. Revisá el email e intentá nuevamente.");
