@@ -124,6 +124,11 @@ export default function SignupWizard() {
   const [distinctAdministration, setDistinctAdministration] = useState(false);
   const [signInNotice, setSignInNotice] = useState<string>();
   const [signInBusy, setSignInBusy] = useState(false);
+  const [authConfigurationReady, setAuthConfigurationReady] = useState(false);
+  const [checkoutConfiguration, setCheckoutConfiguration] = useState<{
+    ready: boolean;
+    missing: string[];
+  }>();
   const paymentAttemptId = payment?.attemptId;
   const paymentStatusToken = payment?.statusToken;
   const authorizationHeader = useCallback(async () => {
@@ -137,9 +142,10 @@ export default function SignupWizard() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
-      setSignInNotice("El ingreso no está configurado en este entorno.");
+      setSignInNotice("Falta configurar NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para verificar el email en este entorno.");
       return;
     }
+    setAuthConfigurationReady(true);
     const client = createClient(url, key, {
       auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true },
     });
@@ -173,11 +179,31 @@ export default function SignupWizard() {
       const result = (await response.json()) as { account?: AccountInspection };
       if (!result.account || cancelled) return;
       setAccount(result.account);
-      if (result.account.pending.length === 1 && result.account.organizations.length === 0) {
-        setSelectedOrganizationId(result.account.pending[0].organization_id);
+      if (result.account.pending.length + result.account.organizations.length === 1) {
+        setSelectedOrganizationId(
+          result.account.pending[0]?.organization_id ?? result.account.organizations[0]?.organization_id,
+        );
       }
     };
     void restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/payments/configuration", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("configuration_unavailable");
+        return (await response.json()) as { ready: boolean; missing: string[] };
+      })
+      .then((result) => {
+        if (!cancelled) setCheckoutConfiguration(result);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCheckoutConfiguration({ ready: false, missing: ["No pudimos verificar la configuración del checkout."] });
+        }
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -336,6 +362,26 @@ export default function SignupWizard() {
     () => tiers.find((tier) => tier.slug === data.plan) ?? tiers[0],
     [data.plan],
   );
+  const emailIsVerified = Boolean(
+    verifiedEmail && verifiedEmail === data.email.trim().toLowerCase(),
+  );
+  const accountEntries = (account?.pending.length ?? 0) + (account?.organizations.length ?? 0);
+  const selectedPending = account?.pending.find((item) => item.organization_id === selectedOrganizationId);
+  const selectedExisting = account?.organizations.find((item) => item.organization_id === selectedOrganizationId);
+  const pendingCanStart = Boolean(
+    selectedPending && ["created", "submitting", "provider_pending", "pending_review", "indeterminate", "approved"].includes(selectedPending.attempt_status ?? ""),
+  );
+  const accountChoiceReady = Boolean(
+    account && (
+      accountEntries === 0 ||
+      distinctAdministration ||
+      (selectedPending && pendingCanStart)
+    ) && !selectedExisting,
+  );
+  const checkoutCanStart = Boolean(
+    checkoutNonce && checkoutConfiguration?.ready && authConfigurationReady &&
+    emailIsVerified && account && accountChoiceReady,
+  );
 
   const stepValid = [
     Boolean(
@@ -355,6 +401,17 @@ export default function SignupWizard() {
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateEmail(value: string) {
+    setData((current) => ({ ...current, email: value }));
+    if (value.trim().toLowerCase() !== verifiedEmail) {
+      setVerifiedEmail(undefined);
+      setAccount(undefined);
+      setSelectedOrganizationId(undefined);
+      setDistinctAdministration(false);
+      setSignInNotice(undefined);
+    }
   }
 
   function navigate(nextStep: number, nextDirection: 1 | -1) {
@@ -399,58 +456,6 @@ export default function SignupWizard() {
     event?.preventDefault();
     setAttempted(true);
     if (!stepValid || step >= steps.length - 1) return;
-    if (step === 0) {
-      const email = data.email.trim().toLowerCase();
-      if (!verifiedEmail || verifiedEmail !== email || !account) {
-        setSignInNotice("Ingresá con este email para continuar.");
-        return;
-      }
-      const pending = account.pending.find((item) => item.organization_id === selectedOrganizationId);
-      if (pending) {
-        if (!pending.attempt_id || !["created", "submitting", "provider_pending", "pending_review", "indeterminate", "approved"].includes(pending.attempt_status ?? "")) {
-          setSignInNotice("Esta alta requiere revisión antes de continuar con el pago.");
-          return;
-        }
-        setData((current) => ({
-          ...current,
-          administrationName: pending.administration_name ?? pending.organization_name,
-          responsibleName: pending.responsible_name ?? current.responsibleName,
-          buildingName: pending.building_name ?? current.buildingName,
-          address: pending.building_address ?? current.address,
-          units: pending.units === null ? current.units : String(pending.units),
-          ...(pending.plan_code === "core" || pending.plan_code === "professional"
-            ? { plan: pending.plan_code }
-            : {}),
-        }));
-        if (pending.attempt_status === "created") {
-          navigate(2, 1);
-          return;
-        }
-        setPayment({
-          attemptId: pending.attempt_id,
-          status: pending.attempt_status ?? "provider_pending",
-          entitlementState: "PENDING_PAYMENT",
-          active: false,
-          paymentApproved: false,
-          operationalReady: false,
-        });
-        navigate(3, 1);
-        return;
-      }
-      const existing = account.organizations.find((item) => item.organization_id === selectedOrganizationId);
-      if (existing) {
-        setSignInNotice(
-          existing.entitlement_state === "ACTIVE"
-            ? "Gestioná el plan de esta administración desde ELI Desk."
-            : "Esta administración requiere regularización. No iniciamos otro cobro.",
-        );
-        return;
-      }
-      if ((account.pending.length > 0 || account.organizations.length > 0) && !distinctAdministration) {
-        setSignInNotice("Elegí una administración o indicá que vas a registrar otra distinta.");
-        return;
-      }
-    }
     navigate(step + 1, 1);
   }
 
@@ -470,13 +475,17 @@ export default function SignupWizard() {
 
   async function requestEmailSignIn() {
     const email = data.email.trim().toLowerCase();
-    if (!authClient || !isValidEmail(email) || signInBusy) return;
+    if (!authClient) {
+      setSignInNotice("Falta configurar NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para enviar el enlace.");
+      return;
+    }
+    if (!isValidEmail(email) || signInBusy) return;
     setSignInBusy(true);
     setSignInNotice(undefined);
     try {
       await authClient.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+        options: { emailRedirectTo: window.location.href },
       });
       setSignInNotice("Si este email puede ingresar, vas a recibir un enlace para continuar.");
     } catch {
@@ -489,10 +498,49 @@ export default function SignupWizard() {
   async function createSubscription(cardToken: string) {
     setPaymentError(undefined);
     const authorization = await authorizationHeader();
-    if (!authorization || !verifiedEmail || verifiedEmail !== data.email.trim().toLowerCase()) {
-      const message = "Ingresá con tu email antes de iniciar el pago.";
+    if (!authorization || !emailIsVerified) {
+      const message = "Verificá tu email con el enlace antes de crear la suscripción.";
       setPaymentError(message);
       throw new Error(message);
+    }
+    if (!checkoutConfiguration?.ready) {
+      const message = "El checkout no está listo en este entorno. Revisá la configuración indicada arriba.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (!account) {
+      const message = "Primero debemos verificar si ya existe una administración asociada a tu cuenta.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (selectedExisting) {
+      const message = selectedExisting.entitlement_state === "ACTIVE"
+        ? "Esta administración ya está activa. Gestioná su plan desde ELI Desk."
+        : "Esta administración requiere regularización. No iniciamos otro cobro.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (accountEntries > 0 && !distinctAdministration && !selectedPending) {
+      const message = "Elegí una administración existente o indicá que vas a registrar una distinta.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (selectedPending && selectedPending.attempt_status !== "created") {
+      if (!selectedPending.attempt_id || !pendingCanStart) {
+        const message = "Esta alta requiere revisión antes de reanudar el pago.";
+        setPaymentError(message);
+        throw new Error(message);
+      }
+      setPayment({
+        attemptId: selectedPending.attempt_id,
+        status: selectedPending.attempt_status ?? "provider_pending",
+        entitlementState: "PENDING_PAYMENT",
+        active: false,
+        paymentApproved: selectedPending.attempt_status === "approved",
+        operationalReady: false,
+      });
+      navigate(selectedPending.attempt_status === "approved" ? 4 : 3, 1);
+      return;
     }
     const response = await fetch("/api/payments/checkout", {
       method: "POST",
@@ -591,7 +639,7 @@ export default function SignupWizard() {
                         label="Email principal"
                         type="email"
                         value={data.email}
-                        onChange={(value) => update("email", value)}
+                        onChange={updateEmail}
                         placeholder="nombre@administracion.com"
                         autoComplete="email"
                         error={
@@ -600,63 +648,6 @@ export default function SignupWizard() {
                             : undefined
                         }
                       />
-                      <div className="grid gap-3 sm:col-span-2">
-                        {verifiedEmail === data.email.trim().toLowerCase() ? (
-                          <p className="text-sm font-medium text-emerald-700">Email verificado: {verifiedEmail}</p>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void requestEmailSignIn()}
-                            disabled={!authClient || !isValidEmail(data.email) || signInBusy}
-                            className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {signInBusy ? "Enviando enlace…" : "Continuar con este email"}
-                          </button>
-                        )}
-                        {account && (account.pending.length > 0 || account.organizations.length > 0) && (
-                          <>
-                            <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
-                              Elegí una administración vinculada a tu cuenta
-                              <select
-                                id="existing-organization"
-                                value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
-                                onChange={(event) => {
-                                  setDistinctAdministration(false);
-                                  setSelectedOrganizationId(event.target.value || undefined);
-                                  setSignInNotice(undefined);
-                                }}
-                                className="min-h-11 rounded-xl border border-[#323159]/15 bg-white px-3 font-normal"
-                              >
-                                <option value="">Seleccionar administración</option>
-                                {account.pending.map((item) => (
-                                  <option key={item.organization_id} value={item.organization_id}>
-                                    {item.organization_name} · alta pendiente
-                                  </option>
-                                ))}
-                                {account.organizations.map((item) => (
-                                  <option key={item.organization_id} value={item.organization_id}>
-                                    {item.organization_name} · {item.entitlement_state === "ACTIVE" ? "activa" : "requiere regularización"}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex items-start gap-2 text-sm text-[#323159]/75">
-                              <input
-                                type="checkbox"
-                                checked={distinctAdministration}
-                                onChange={(event) => {
-                                  setDistinctAdministration(event.target.checked);
-                                  if (event.target.checked) setSelectedOrganizationId(undefined);
-                                  setSignInNotice(undefined);
-                                }}
-                                className="mt-1 accent-[#2346DD]"
-                              />
-                              Voy a registrar una administración distinta
-                            </label>
-                          </>
-                        )}
-                        {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
-                      </div>
                     </form>
                   </StepShell>
                 )}
@@ -840,6 +831,108 @@ export default function SignupWizard() {
                                 <p className="mt-0.5 max-w-[320px] truncate text-xs text-[#323159]/55">{data.administrationName} · {data.buildingName}</p>
                               </div>
                             </div>
+                            <section className="grid gap-3 rounded-[20px] border border-[#323159]/10 bg-white p-4" aria-labelledby="checkout-email-heading">
+                              <div>
+                                <h4 id="checkout-email-heading" className="font-semibold">Verificá tu email antes de crear la suscripción</h4>
+                                <p className="mt-1 text-sm leading-relaxed text-[#323159]/65">
+                                  Te enviaremos un enlace para confirmar que esta cuenta te pertenece. Al volver, ELI verificará la cuenta y la administración asociada antes de iniciar cualquier cobro. Los datos del wizard se conservan; los datos y tokens de tarjeta no se guardan.
+                                </p>
+                              </div>
+                              <Field
+                                id="checkout-email"
+                                label="Email de la administración"
+                                type="email"
+                                value={data.email}
+                                onChange={updateEmail}
+                                placeholder="nombre@administracion.com"
+                                autoComplete="email"
+                                error={attempted && !isValidEmail(data.email) ? "Ingresá un email válido." : undefined}
+                              />
+                              {emailIsVerified ? (
+                                <p className="text-sm font-semibold text-emerald-700" role="status">Email verificado: {verifiedEmail}</p>
+                              ) : (
+                                <div className="grid gap-2 justify-items-start">
+                                  <button
+                                    type="button"
+                                    onClick={() => void requestEmailSignIn()}
+                                    disabled={!authConfigurationReady || !isValidEmail(data.email) || signInBusy}
+                                    className="min-h-11 rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {signInBusy ? "Enviando enlace…" : "Enviar enlace de verificación"}
+                                  </button>
+                                  {!authConfigurationReady && (
+                                    <p className="text-sm text-amber-900">Falta Supabase Auth en este entorno. Configurá NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para recibir el enlace.</p>
+                                  )}
+                                </div>
+                              )}
+                              {account && accountEntries > 0 && (
+                                <>
+                                  <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
+                                    Revisá la administración asociada a esta cuenta
+                                    <select
+                                      id="existing-organization"
+                                      value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
+                                      onChange={(event) => {
+                                        setDistinctAdministration(false);
+                                        setSelectedOrganizationId(event.target.value || undefined);
+                                        setPaymentError(undefined);
+                                      }}
+                                      className="min-h-11 rounded-xl border border-[#323159]/15 bg-white px-3 font-normal"
+                                    >
+                                      <option value="">Seleccionar administración</option>
+                                      {account.pending.map((item) => (
+                                        <option key={item.organization_id} value={item.organization_id}>
+                                          {item.organization_name} · alta pendiente
+                                        </option>
+                                      ))}
+                                      {account.organizations.map((item) => (
+                                        <option key={item.organization_id} value={item.organization_id}>
+                                          {item.organization_name} · {item.entitlement_state === "ACTIVE" ? "activa" : "requiere regularización"}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="flex items-start gap-2 text-sm text-[#323159]/75">
+                                    <input
+                                      type="checkbox"
+                                      checked={distinctAdministration}
+                                      onChange={(event) => {
+                                        setDistinctAdministration(event.target.checked);
+                                        if (event.target.checked) setSelectedOrganizationId(undefined);
+                                        setPaymentError(undefined);
+                                      }}
+                                      className="mt-1 accent-[#2346DD]"
+                                    />
+                                    Voy a registrar una administración distinta
+                                  </label>
+                                </>
+                              )}
+                              {emailIsVerified && !account && (
+                                <p className="text-sm text-[#323159]/65" role="status">Verificando si ya existe una administración vinculada antes de habilitar el inicio del pago…</p>
+                              )}
+                              {account && accountEntries === 0 && (
+                                <p className="text-sm text-emerald-700" role="status">No encontramos otra administración asociada. Podés continuar con esta alta.</p>
+                              )}
+                              {selectedExisting && (
+                                <p className="text-sm text-amber-900" role="status">
+                                  {selectedExisting.entitlement_state === "ACTIVE"
+                                    ? "Esta administración ya está activa. Gestioná el plan desde ELI Desk."
+                                    : "Esta administración requiere regularización. No iniciamos otro cobro."}
+                                </p>
+                              )}
+                              {account && accountEntries > 0 && !distinctAdministration && !selectedOrganizationId && (
+                                <p className="text-sm text-amber-900" role="status">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>
+                              )}
+                              {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
+                            </section>
+                            {checkoutConfiguration && !checkoutConfiguration.ready && (
+                              <div className="rounded-[18px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
+                                <p className="font-semibold">Falta configuración del checkout para este entorno.</p>
+                                <p className="mt-1">Revisá estas variables server-side:</p>
+                                <ul className="mt-1 list-inside list-disc">{checkoutConfiguration.missing.map((name) => <li key={name}><code>{name}</code></li>)}</ul>
+                              </div>
+                            )}
+                            {!checkoutConfiguration && <p className="text-sm text-[#323159]/65" role="status">Verificando la configuración del checkout…</p>}
                             {hasOpenedPayment && (
                               <>
                                 <MercadoPagoSubscriptionCheckout
@@ -849,9 +942,21 @@ export default function SignupWizard() {
                                       : data.plan === "professional" ? "155000" : "99999"
                                   }
                                   email={data.email}
-                                  disabled={!checkoutNonce}
+                                  disabled={!checkoutCanStart}
                                   onToken={createSubscription}
                                 />
+                                {!checkoutCanStart && checkoutConfiguration?.ready && !emailIsVerified && authConfigurationReady && (
+                                  <p className="text-sm text-[#323159]/70">Enviá el enlace y volvé aquí para verificar el email antes de continuar.</p>
+                                )}
+                                {!checkoutCanStart && checkoutConfiguration?.ready && emailIsVerified && !account && (
+                                  <p className="text-sm text-[#323159]/70">Esperá a que ELI termine de verificar la cuenta y las administraciones asociadas.</p>
+                                )}
+                                {!checkoutCanStart && checkoutConfiguration?.ready && selectedPending && !pendingCanStart && (
+                                  <p className="text-sm text-amber-900">Esta alta requiere revisión antes de iniciar el pago.</p>
+                                )}
+                                {!checkoutCanStart && checkoutConfiguration?.ready && account && accountEntries > 0 && !selectedOrganizationId && !distinctAdministration && (
+                                  <p className="text-sm text-amber-900">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>
+                                )}
                                 {paymentError && <p className="text-sm text-red-600" aria-live="polite">{paymentError}</p>}
                               </>
                             )}
@@ -902,13 +1007,15 @@ export default function SignupWizard() {
 
                 {step === 4 && (
                   <StepShell
-                    title="Todo listo!"
-                    subtitle="Bienvenido a ELI."
+                    title={payment?.operationalReady ? "Todo listo!" : "Pago aprobado, activación pendiente"}
+                    subtitle={payment?.operationalReady ? "Bienvenido a ELI." : "ELI confirmó el pago. La administración todavía no está habilitada."}
                     eyebrow="REGISTRO ELI"
                     strongTitle
                   >
                     <p className="-mt-2 text-sm leading-relaxed text-[#74738E] sm:text-base lg:-mt-6">
-                      En breve te llegará un email con instrucciones.
+                      {payment?.operationalReady
+                        ? "El pago y la activación están confirmados. Ya podés ingresar a ELI Desk."
+                        : "Te avisaremos cuando termine la activación. El acceso a ELI Desk aparecerá cuando la administración esté lista."}
                     </p>
                   </StepShell>
                 )}
@@ -920,6 +1027,7 @@ export default function SignupWizard() {
               onBack={back}
               onNext={() => next()}
               onDesk={openDesk}
+              operationalReady={Boolean(payment?.operationalReady)}
               hideNext={step === 2 || step === 3}
             />
 
@@ -930,7 +1038,9 @@ export default function SignupWizard() {
               {deskNotice
                 ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
                 : step === 4
-                  ? "Suscripción activa confirmada por ELI."
+                  ? payment?.operationalReady
+                    ? "Suscripción activa confirmada por ELI."
+                    : "Pago aprobado; activación todavía pendiente."
                   : "No recargues la página mientras verificamos el estado."}
             </p>
           </div>
@@ -1317,12 +1427,14 @@ function WizardNavigation({
   onBack,
   onNext,
   onDesk,
+  operationalReady,
   hideNext,
 }: {
   step: number;
   onBack: () => void;
   onNext: () => void;
   onDesk: () => void;
+  operationalReady: boolean;
   hideNext: boolean;
 }) {
   const nextLabels = [
@@ -1363,7 +1475,7 @@ function WizardNavigation({
           {nextLabels[step]}
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
-      ) : step === steps.length - 1 ? (
+      ) : step === steps.length - 1 && operationalReady ? (
         <button
           type="button"
           onClick={onDesk}
