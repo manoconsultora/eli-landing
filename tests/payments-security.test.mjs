@@ -81,6 +81,8 @@ test("checkout copy stays customer-facing while account validation remains silen
   assert.match(card, /form-checkout__cardNumber/);
   assert.match(card, /from-\[#F3F4F2\]/);
   assert.match(card, /onToken/);
+  assert.match(card, /\/images\/mercadopago\.svg/);
+  assert.match(card, /opacity-60 grayscale/);
 });
 
 test("the auth callback is wired through both the App Shell and onboarding route", async () => {

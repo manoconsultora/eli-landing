@@ -1,6 +1,7 @@
 "use client";
 
 import { CreditCard, LoaderCircle, RotateCcw, ShieldCheck } from "lucide-react";
+import Image from "next/image";
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
@@ -158,9 +159,18 @@ export default function MercadoPagoSubscriptionCheckout({
         strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
       />
-      <div className="mb-5 flex items-start gap-2.5 text-sm leading-relaxed text-[#323159]/65">
+      <div className="mb-5 flex items-start justify-between gap-4 text-sm leading-relaxed text-[#323159]/65">
+        <div className="flex min-w-0 items-start gap-2.5">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#2346DD]" aria-hidden="true" />
         <p><span className="font-semibold text-[#323159]">Pago seguro.</span> Mercado Pago procesa el pago; ELI no almacena los datos de tu tarjeta.</p>
+        </div>
+        <Image
+          src="/images/mercadopago.svg"
+          alt="Mercado Pago"
+          width={28}
+          height={28}
+          className="h-6 w-6 shrink-0 text-[#6F7578] opacity-60 grayscale"
+        />
       </div>
 
       <div data-mp-subscription-cta="with-plan">
