@@ -62,6 +62,11 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.match(source, /Bienvenido\/a a ELI/);
   assert.match(source, /Continuar con mi primer consorcio/);
   assert.match(source, /callbackReturnRef\.current/);
+  assert.match(source, /hasAuthCallbackError/);
+  assert.match(source, /sanitizeAuthCallbackUrl/);
+  assert.match(source, /Tu cuenta ya está activada/);
+  assert.match(source, /Este enlace venció o ya fue utilizado/);
+  assert.match(source, /Solicitar un nuevo enlace/);
   assert.doesNotMatch(source, /function PlanSelection/);
   assert.match(source, /title="Elegí tu plan"/);
   assert.match(source, /payment\?\.operationalReady \? "Todo listo!" : "Pago aprobado, activación pendiente"/);
@@ -89,6 +94,7 @@ test("the auth callback is wired through both the App Shell and onboarding route
   const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
   const onboarding = await readFile(new URL("../src/app/onboarding/page.tsx", import.meta.url), "utf8");
   assert.match(home, /params\.code/);
+  assert.match(home, /authCallbackError/);
   assert.match(home, /<SignupWizard \/>/);
   assert.match(home, /Suspense/);
   assert.match(onboarding, /import SignupWizard/);

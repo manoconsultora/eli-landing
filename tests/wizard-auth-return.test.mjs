@@ -4,8 +4,10 @@ import {
   authReturnParam,
   authReturnStoragePrefix,
   buildLandingAuthCallbackUrl,
+  hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
+  sanitizeAuthCallbackUrl,
   serializeAuthReturn,
 } from "../src/components/SignupWizard/auth-return.ts";
 
@@ -40,6 +42,18 @@ test("authentication return preserves the wizard data, verification step and non
   assert.equal(draft.step, 1);
   assert.equal(draft.eliSignupSubstep, "verification");
   assert.equal(draft.checkoutNonce, nonce);
+});
+
+test("auth callback errors are detected and sanitized without exposing provider details", () => {
+  const errorUrl = new URL("https://eli.example/onboarding?plan=core&eli_signup_return=draft#access_denied&error_code=otp_expired&error_description=Email+link+is+invalid");
+  assert.equal(hasAuthCallbackError(errorUrl), true);
+  const sanitized = sanitizeAuthCallbackUrl(errorUrl);
+  assert.equal(sanitized.pathname, "/onboarding");
+  assert.equal(sanitized.searchParams.get("plan"), "core");
+  assert.equal(sanitized.searchParams.get("eli_signup_return"), "draft");
+  assert.equal(sanitized.hash, "");
+  assert.equal(sanitized.searchParams.has("error_code"), false);
+  assert.equal(sanitized.searchParams.has("error_description"), false);
 });
 
 test("neither serialization nor restoration retains extra card data or tokens", () => {

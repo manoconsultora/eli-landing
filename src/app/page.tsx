@@ -18,7 +18,10 @@ const HomePage = async ({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) => {
   const params = await searchParams;
-  if (typeof params.code === "string" && params.code.length > 0) {
+  const authCallbackError = ["error", "error_code", "error_description"].some(
+    (key) => typeof params[key] === "string" && params[key]!.length > 0,
+  );
+  if ((typeof params.code === "string" && params.code.length > 0) || authCallbackError) {
     return (
       <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#E9EEFF]">Preparando ELI…</div>}>
         <SignupWizard />

@@ -12,6 +12,23 @@ export const authReturnParam = "eli_signup_return";
 export const authReturnStoragePrefix = "eli-signup-wizard-auth-return:";
 const lifetimeMs = 30 * 60 * 1000;
 
+export function hasAuthCallbackError(url: Pick<URL, "searchParams" | "hash">) {
+  const params = new URLSearchParams(url.searchParams);
+  const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+  const hashParams = new URLSearchParams(hash);
+  return ["error", "error_code", "error_description"].some(
+    (key) => params.has(key) || hashParams.has(key),
+  );
+}
+
+export function sanitizeAuthCallbackUrl(url: URL) {
+  ["error", "error_code", "error_description", "error_reason", "error_reason_description", "code", "sb_flow_id"].forEach(
+    (key) => url.searchParams.delete(key),
+  );
+  url.hash = "";
+  return url;
+}
+
 /** Build the Landing callback without relying on Supabase's shared Site URL. */
 export function buildLandingAuthCallbackUrl(origin: string, plan: WizardData["plan"], draftId: string) {
   const callbackUrl = new URL("/onboarding", origin);

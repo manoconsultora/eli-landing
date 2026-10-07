@@ -34,8 +34,10 @@ import {
   authReturnParam,
   authReturnStorageKey,
   buildLandingAuthCallbackUrl,
+  hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
+  sanitizeAuthCallbackUrl,
   serializeAuthReturn,
   type WizardData,
 } from "./auth-return";
@@ -50,6 +52,7 @@ const steps = [
 ] as const;
 
 type PlanSlug = "core" | "professional";
+type AuthLinkState = "already-activated" | "expired";
 
 const initialData: WizardData = {
   administrationName: "",
@@ -125,12 +128,14 @@ export default function SignupWizard() {
     account?: AccountInspection;
     notice?: string;
     activatedViaCallback?: boolean;
+    authCallbackError?: boolean;
   }> | null>(null);
   const callbackReturnRef = useRef(false);
   const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
   const authDraftReadRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
+  const [authLinkState, setAuthLinkState] = useState<AuthLinkState>();
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
@@ -170,21 +175,21 @@ export default function SignupWizard() {
       let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
-      callbackReturnRef.current = Boolean(code);
+      const authCallbackError = hasAuthCallbackError(callbackUrl);
+      callbackReturnRef.current = Boolean(code || authCallbackError);
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
-        callbackUrl.searchParams.delete("code");
-        callbackUrl.searchParams.delete("sb_flow_id");
-        callbackUrl.searchParams.delete(authReturnParam);
-        window.history.replaceState(window.history.state, "", callbackUrl);
         if (error) notice = "No pudimos completar el ingreso. Solicitá un enlace nuevo.";
       }
+      if (code || authCallbackError) {
+        window.history.replaceState(window.history.state, "", sanitizeAuthCallbackUrl(callbackUrl));
+      }
       const { data: userData } = await client.auth.getUser();
-      if (!userData.user?.email || !userData.user.email_confirmed_at) return { notice };
+      if (!userData.user?.email || !userData.user.email_confirmed_at) return { notice, authCallbackError };
       const email = userData.user.email.trim().toLowerCase();
       const { data: sessionData } = await client.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!token) return { notice };
+      if (!token) return { email, notice, authCallbackError };
       const response = await fetch("/api/payments/checkout", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -193,11 +198,12 @@ export default function SignupWizard() {
         return {
           email,
           notice: "No pudimos verificar tus administraciones. Intentá nuevamente.",
-          activatedViaCallback: callbackReturnRef.current,
+          activatedViaCallback: Boolean(code),
+          authCallbackError,
         };
       }
       const result = (await response.json()) as { account?: AccountInspection };
-      return { email, account: result.account, notice, activatedViaCallback: callbackReturnRef.current };
+      return { email, account: result.account, notice, activatedViaCallback: Boolean(code), authCallbackError };
     })();
     void authRestoreRef.current.then((result) => {
       if (cancelled) return;
@@ -205,6 +211,9 @@ export default function SignupWizard() {
       if (result.email) {
         setVerifiedEmail(result.email);
         setData((current) => ({ ...current, email: result.email! }));
+      }
+      if (result.authCallbackError) {
+        setAuthLinkState(result.email ? "already-activated" : "expired");
       }
       if (result.activatedViaCallback) setPostActivation(true);
       if (!result.account) return;
@@ -263,11 +272,14 @@ export default function SignupWizard() {
       if (!authDraftReadRef.current) {
         authDraftReadRef.current = true;
         pruneAuthReturns(window.localStorage);
-        const key = authReturnStorageKey(new URL(window.location.href).searchParams.get(authReturnParam));
+        const callbackUrl = new URL(window.location.href);
+        const key = authReturnStorageKey(callbackUrl.searchParams.get(authReturnParam));
         if (key) {
           authDraftRef.current = parseAuthReturn(window.localStorage.getItem(key));
           window.localStorage.removeItem(key);
           if (!authDraftRef.current) setSignInNotice("El enlace ya no conserva tus datos. Completalos nuevamente para continuar.");
+          callbackUrl.searchParams.delete(authReturnParam);
+          window.history.replaceState(window.history.state, "", callbackUrl);
         }
       }
       const saved = authDraftRef.current
@@ -648,6 +660,19 @@ export default function SignupWizard() {
     }
     setPayment(result.checkout);
     navigate(result.checkout.paymentApproved ? 5 : 4, 1);
+  }
+
+  if (authLinkState) {
+    return (
+      <AuthLinkStatus
+        state={authLinkState}
+        onContinue={() => {
+          setAuthLinkState(undefined);
+          setDirection(1);
+          setStep(verifiedEmail ? 2 : 1);
+        }}
+      />
+    );
   }
 
   if (postActivation) {
@@ -1158,6 +1183,38 @@ export default function SignupWizard() {
           )}
         </section>
       </div>
+    </main>
+  );
+}
+
+function AuthLinkStatus({ state, onContinue }: { state: AuthLinkState; onContinue: () => void }) {
+  const alreadyActivated = state === "already-activated";
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
+      <section className="w-full max-w-xl rounded-[32px] bg-white p-7 text-center shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-12">
+        {alreadyActivated ? (
+          <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
+        ) : (
+          <Clock3 className="mx-auto h-12 w-12 text-[#2346DD]" aria-hidden="true" />
+        )}
+        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Verificación de email</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
+          {alreadyActivated ? "Tu cuenta ya está activada" : "Este enlace venció o ya fue utilizado"}
+        </h1>
+        <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
+          {alreadyActivated
+            ? "Podés continuar con tu alta desde el punto en que la dejaste."
+            : "Solicitá un nuevo enlace para continuar con tu alta de forma segura."}
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
+        >
+          {alreadyActivated ? "Continuar con mi alta" : "Solicitar un nuevo enlace"}
+          <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
+        </button>
+      </section>
     </main>
   );
 }
