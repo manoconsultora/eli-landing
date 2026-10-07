@@ -37,7 +37,7 @@ export function buildLandingAuthCallbackUrl(origin: string, plan: WizardData["pl
   return callbackUrl.toString();
 }
 
-type AuthReturnDraft = {
+export type AuthReturnDraft = {
   version: 1;
   expiresAt: number;
   data: WizardData;
@@ -90,6 +90,25 @@ export function parseAuthReturn(serialized: string | null, now = Date.now()): Au
 
 export function authReturnStorageKey(id: string | null) {
   return id && /^[0-9a-f-]{36}$/i.test(id) ? `${authReturnStoragePrefix}${id}` : null;
+}
+
+export function findAuthReturnForEmail(
+  storage: Pick<Storage, "length" | "key" | "getItem">,
+  email: string,
+  now = Date.now(),
+) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return null;
+
+  let latest: { key: string; draft: AuthReturnDraft } | null = null;
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key?.startsWith(authReturnStoragePrefix)) continue;
+    const draft = parseAuthReturn(storage.getItem(key), now);
+    if (!draft || draft.data.email.trim().toLowerCase() !== normalizedEmail) continue;
+    if (!latest || draft.expiresAt > latest.draft.expiresAt) latest = { key, draft };
+  }
+  return latest;
 }
 
 export function pruneAuthReturns(storage: Pick<Storage, "length" | "key" | "getItem" | "removeItem">, now = Date.now()) {

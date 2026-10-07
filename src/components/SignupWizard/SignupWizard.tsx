@@ -34,6 +34,7 @@ import {
   authReturnParam,
   authReturnStorageKey,
   buildLandingAuthCallbackUrl,
+  findAuthReturnForEmail,
   hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
@@ -133,6 +134,7 @@ export default function SignupWizard() {
   const callbackReturnRef = useRef(false);
   const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
   const authDraftReadRef = useRef(false);
+  const authDraftRecoveredByEmailRef = useRef(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
   const [authLinkState, setAuthLinkState] = useState<AuthLinkState>();
@@ -326,6 +328,36 @@ export default function SignupWizard() {
       setHydrated(true);
     }
   }, [requestedPlan, resumeToConsortium]);
+
+  useEffect(() => {
+    if (
+      !hydrated ||
+      !verifiedEmail ||
+      authDraftRef.current ||
+      authDraftRecoveredByEmailRef.current
+    ) return;
+
+    authDraftRecoveredByEmailRef.current = true;
+    try {
+      pruneAuthReturns(window.localStorage);
+      const match = findAuthReturnForEmail(window.localStorage, verifiedEmail);
+      if (!match) return;
+
+      authDraftRef.current = match.draft;
+      window.localStorage.removeItem(match.key);
+      setData((current) => ({
+        ...current,
+        ...match.draft.data,
+        email: verifiedEmail,
+        ...(requestedPlan === "core" || requestedPlan === "professional"
+          ? { plan: requestedPlan }
+          : {}),
+      }));
+      setCheckoutNonce(match.draft.checkoutNonce);
+    } catch {
+      // The normal wizard state remains usable when browser storage is unavailable.
+    }
+  }, [hydrated, requestedPlan, verifiedEmail]);
 
   useEffect(() => {
     if (!hydrated) return;

@@ -4,6 +4,7 @@ import {
   authReturnParam,
   authReturnStoragePrefix,
   buildLandingAuthCallbackUrl,
+  findAuthReturnForEmail,
   hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
@@ -42,6 +43,27 @@ test("authentication return preserves the wizard data, verification step and non
   assert.equal(draft.step, 1);
   assert.equal(draft.eliSignupSubstep, "verification");
   assert.equal(draft.checkoutNonce, nonce);
+});
+
+test("root callback restores the latest valid draft for the authenticated email", () => {
+  const other = { ...data, email: "other@example.test" };
+  const olderTarget = { ...data, administrationName: "Administración anterior" };
+  const entries = new Map([
+    [authReturnStoragePrefix + "other", serializeAuthReturn(other, nonce, now + 2000)],
+    [authReturnStoragePrefix + "older", serializeAuthReturn(olderTarget, nonce, now)],
+    [authReturnStoragePrefix + "latest", serializeAuthReturn(data, nonce, now + 1000)],
+  ]);
+  const storage = {
+    get length() { return entries.size; },
+    key: (index) => [...entries.keys()][index],
+    getItem: (key) => entries.get(key) ?? null,
+  };
+
+  const match = findAuthReturnForEmail(storage, " QA@EXAMPLE.TEST ", now + 3000);
+  assert.equal(match.key, authReturnStoragePrefix + "latest");
+  assert.equal(match.draft.data.administrationName, "Administración QA Norte");
+  assert.equal(match.draft.data.responsibleName, "Martin QA");
+  assert.equal(findAuthReturnForEmail(storage, "missing@example.test", now + 3000), null);
 });
 
 test("auth callback errors are detected and sanitized without exposing provider details", () => {
