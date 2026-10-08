@@ -8,9 +8,12 @@ import {
   hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
+  readAuthReturnById,
+  restoreAuthReturnData,
   sanitizeAuthCallbackUrl,
   serializeAuthReturn,
 } from "../src/components/SignupWizard/auth-return.ts";
+import { buildCheckoutPayload } from "../src/components/SignupWizard/checkout-payload.ts";
 
 const now = 1_800_000_000_000;
 const data = {
@@ -64,6 +67,56 @@ test("root callback restores the latest valid draft for the authenticated email"
   assert.equal(match.draft.data.administrationName, "Administración QA Norte");
   assert.equal(match.draft.data.responsibleName, "Martin QA");
   assert.equal(findAuthReturnForEmail(storage, "missing@example.test", now + 3000), null);
+});
+
+test("callback, Welcome and a new tab restore both names through checkout payload", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const key = authReturnStoragePrefix + id;
+  const entries = new Map([[key, serializeAuthReturn(data, nonce, now)]]);
+  const storage = {
+    get length() { return entries.size; },
+    key: (index) => [...entries.keys()][index],
+    getItem: (itemKey) => entries.get(itemKey) ?? null,
+  };
+
+  const callbackDraft = readAuthReturnById(storage, id, now + 1000);
+  assert.equal(callbackDraft.data.administrationName, data.administrationName);
+  assert.equal(callbackDraft.data.responsibleName, data.responsibleName);
+  assert.equal(entries.has(key), true, "Welcome must not consume the cross-tab draft");
+
+  const resumedDraft = findAuthReturnForEmail(storage, data.email, now + 2000);
+  const reloadedDraft = findAuthReturnForEmail(storage, data.email, now + 3000);
+  assert.deepEqual(reloadedDraft.draft.data, resumedDraft.draft.data);
+
+  const restored = restoreAuthReturnData(
+    { ...resumedDraft.draft.data, administrationName: "", responsibleName: "", buildingName: "Consorcio TEST", address: "Av. TEST 1000", units: "12" },
+    reloadedDraft.draft.data,
+    data.email,
+    data.email,
+  );
+  assert.equal(restored.administrationName, data.administrationName);
+  assert.equal(restored.responsibleName, data.responsibleName);
+  assert.equal(restored.buildingName, "Consorcio TEST");
+  assert.equal(restored.address, "Av. TEST 1000");
+  const otherSession = restoreAuthReturnData(
+    { ...restored, administrationName: "Otra administración", email: "other@example.test" },
+    reloadedDraft.draft.data,
+    data.email,
+    "other@example.test",
+  );
+  assert.equal(otherSession.administrationName, data.administrationName);
+
+  const payload = buildCheckoutPayload(
+    restored,
+    reloadedDraft.draft.checkoutNonce,
+    "dummy-test-token",
+    null,
+    false,
+  );
+  assert.equal(payload.administrationName, data.administrationName);
+  assert.equal(payload.responsibleName, data.responsibleName);
+  assert.equal(payload.offerId, data.plan);
+  assert.equal(payload.buildingName, "Consorcio TEST");
 });
 
 test("auth callback errors are detected and sanitized without exposing provider details", () => {

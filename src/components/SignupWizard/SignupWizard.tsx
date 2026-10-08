@@ -30,6 +30,7 @@ import {
 
 import { tiers } from "@/data/pricing";
 import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
+import { buildCheckoutPayload } from "./checkout-payload";
 import {
   authReturnParam,
   authReturnStorageKey,
@@ -38,6 +39,8 @@ import {
   hasAuthCallbackError,
   parseAuthReturn,
   pruneAuthReturns,
+  readAuthReturnById,
+  restoreAuthReturnData,
   sanitizeAuthCallbackUrl,
   serializeAuthReturn,
   type WizardData,
@@ -135,6 +138,7 @@ export default function SignupWizard() {
   const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
   const authDraftReadRef = useRef(false);
   const authDraftRecoveredByEmailRef = useRef(false);
+  const sessionDraftEmailRef = useRef<string | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
   const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
   const [authLinkState, setAuthLinkState] = useState<AuthLinkState>();
@@ -277,8 +281,7 @@ export default function SignupWizard() {
         const callbackUrl = new URL(window.location.href);
         const key = authReturnStorageKey(callbackUrl.searchParams.get(authReturnParam));
         if (key) {
-          authDraftRef.current = parseAuthReturn(window.localStorage.getItem(key));
-          window.localStorage.removeItem(key);
+          authDraftRef.current = readAuthReturnById(window.localStorage, callbackUrl.searchParams.get(authReturnParam));
           if (!authDraftRef.current) setSignInNotice("El enlace ya no conserva tus datos. Completalos nuevamente para continuar.");
           callbackUrl.searchParams.delete(authReturnParam);
           window.history.replaceState(window.history.state, "", callbackUrl);
@@ -299,6 +302,10 @@ export default function SignupWizard() {
         checkoutNonce?: string;
         payment?: PaymentSession;
       };
+
+      if (!authDraftRef.current) {
+        sessionDraftEmailRef.current = parsed.data?.email?.trim().toLowerCase() ?? null;
+      }
 
       setData((current) => ({
         ...current,
@@ -344,11 +351,8 @@ export default function SignupWizard() {
       if (!match) return;
 
       authDraftRef.current = match.draft;
-      window.localStorage.removeItem(match.key);
       setData((current) => ({
-        ...current,
-        ...match.draft.data,
-        email: verifiedEmail,
+        ...restoreAuthReturnData(current, match.draft.data, verifiedEmail, sessionDraftEmailRef.current),
         ...(requestedPlan === "core" || requestedPlan === "professional"
           ? { plan: requestedPlan }
           : {}),
@@ -465,9 +469,12 @@ export default function SignupWizard() {
       (selectedPending && pendingCanStart)
     ) && !selectedExisting,
   );
+  const administrationNamesReady = Boolean(
+    data.administrationName.trim() && data.responsibleName.trim(),
+  );
   const checkoutCanStart = Boolean(
     checkoutNonce && checkoutConfiguration?.ready && authConfigurationReady &&
-    emailIsVerified && account && accountChoiceReady,
+    emailIsVerified && account && accountChoiceReady && administrationNamesReady,
   );
 
   const stepValid = [
@@ -520,6 +527,10 @@ export default function SignupWizard() {
   }
 
   function continueToPayment() {
+    if (!administrationNamesReady) {
+      navigate(0, -1);
+      return;
+    }
     setHasOpenedPayment(true);
     setStep3View("payment");
     window.history.pushState(
@@ -667,19 +678,13 @@ export default function SignupWizard() {
     const response = await fetch("/api/payments/checkout", {
       method: "POST",
       headers: { "content-type": "application/json", Authorization: authorization },
-      body: JSON.stringify({
-        offerId: data.plan,
+      body: JSON.stringify(buildCheckoutPayload(
+        data,
         checkoutNonce,
         cardToken,
-        administrationName: data.administrationName,
-        responsibleName: data.responsibleName,
-        email: data.email,
-        buildingName: data.buildingName,
-        buildingAddress: data.address,
-        units: Number(data.units),
-        targetOrganizationId: distinctAdministration ? null : selectedOrganizationId ?? null,
-        newDistinctAdministration: distinctAdministration,
-      }),
+        distinctAdministration ? null : selectedOrganizationId ?? null,
+        distinctAdministration,
+      )),
     });
     const result = (await response.json()) as {
       checkout?: PaymentSession;
@@ -962,7 +967,7 @@ export default function SignupWizard() {
                               onClick={continueToPayment}
                               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[17px] bg-[#2346DD] px-5 font-semibold text-white transition hover:bg-[#1939c4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
                             >
-                              Continuar al pago <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                              {administrationNamesReady ? "Continuar al pago" : "Completar datos iniciales"} <ArrowRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                           </div>
                         </section>

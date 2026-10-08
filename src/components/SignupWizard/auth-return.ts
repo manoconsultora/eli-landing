@@ -92,6 +92,37 @@ export function authReturnStorageKey(id: string | null) {
   return id && /^[0-9a-f-]{36}$/i.test(id) ? `${authReturnStoragePrefix}${id}` : null;
 }
 
+export function readAuthReturnById(
+  storage: Pick<Storage, "getItem">,
+  id: string | null,
+  now = Date.now(),
+) {
+  const key = authReturnStorageKey(id);
+  return key ? parseAuthReturn(storage.getItem(key), now) : null;
+}
+
+export function restoreAuthReturnData(
+  current: WizardData,
+  draft: WizardData,
+  verifiedEmail: string,
+  sessionDraftEmail: string | null,
+) {
+  const sameSession = sessionDraftEmail === verifiedEmail.trim().toLowerCase();
+  return {
+    ...current,
+    ...draft,
+    ...(sameSession ? {
+      administrationName: current.administrationName || draft.administrationName,
+      responsibleName: current.responsibleName || draft.responsibleName,
+      buildingName: current.buildingName || draft.buildingName,
+      address: current.address || draft.address,
+      units: current.units || draft.units,
+      plan: current.plan,
+    } : {}),
+    email: verifiedEmail,
+  };
+}
+
 export function findAuthReturnForEmail(
   storage: Pick<Storage, "length" | "key" | "getItem">,
   email: string,
