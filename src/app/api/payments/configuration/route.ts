@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPreviewTestEnvironment } from "@/lib/payments/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,11 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { ready: missing.length === 0, missing },
+    {
+      ready: missing.length === 0,
+      missing,
+      previewTest: isPreviewTestEnvironment(providerEnvironment),
+    },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );
 }

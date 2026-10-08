@@ -10,6 +10,10 @@ export type PaymentsConfig = {
   publicBaseUrl: string;
 };
 
+export function isPreviewTestEnvironment(providerEnvironment = process.env.MP_ENVIRONMENT) {
+  return process.env.VERCEL_ENV === "preview" && providerEnvironment === "test";
+}
+
 function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`missing_server_configuration:${name}`);

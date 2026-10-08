@@ -69,6 +69,7 @@ const initialData: WizardData = {
 };
 
 const storageKey = "eli-signup-wizard-ui-01";
+const defaultTestPaymentEmail = "test_user_1908795610272452659@testuser.com";
 
 type PaymentSession = {
   attemptId: string;
@@ -151,7 +152,9 @@ export default function SignupWizard() {
   const [checkoutConfiguration, setCheckoutConfiguration] = useState<{
     ready: boolean;
     missing: string[];
+    previewTest: boolean;
   }>();
+  const [paymentEmailTest, setPaymentEmailTest] = useState(defaultTestPaymentEmail);
   const paymentAttemptId = payment?.attemptId;
   const paymentStatusToken = payment?.statusToken;
   const authorizationHeader = useCallback(async () => {
@@ -240,14 +243,14 @@ export default function SignupWizard() {
     void fetch("/api/payments/configuration", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("configuration_unavailable");
-        return (await response.json()) as { ready: boolean; missing: string[] };
+        return (await response.json()) as { ready: boolean; missing: string[]; previewTest: boolean };
       })
       .then((result) => {
         if (!cancelled) setCheckoutConfiguration(result);
       })
       .catch(() => {
         if (!cancelled) {
-          setCheckoutConfiguration({ ready: false, missing: ["No pudimos verificar la configuración del checkout."] });
+          setCheckoutConfiguration({ ready: false, missing: ["No pudimos verificar la configuración del checkout."], previewTest: false });
         }
       });
     return () => { cancelled = true; };
@@ -684,6 +687,7 @@ export default function SignupWizard() {
         cardToken,
         distinctAdministration ? null : selectedOrganizationId ?? null,
         distinctAdministration,
+        checkoutConfiguration.previewTest ? paymentEmailTest : undefined,
       )),
     });
     const result = (await response.json()) as {
@@ -1073,6 +1077,19 @@ export default function SignupWizard() {
                             {!checkoutConfiguration && <p className="text-xs text-[#323159]/55" role="status">Preparando tu checkout…</p>}
                             {hasOpenedPayment && (
                               <>
+                                {checkoutConfiguration?.previewTest && (
+                                  <label className="mb-4 block text-sm text-[#323159]/80">
+                                    <span className="mb-1 block font-medium">Payment email TEST</span>
+                                    <input
+                                      type="email"
+                                      value={paymentEmailTest}
+                                      onChange={(event) => setPaymentEmailTest(event.target.value)}
+                                      className="w-full rounded-xl border border-[#323159]/20 bg-white px-3 py-2 text-[#323159] outline-none focus:border-[#2346DD]"
+                                      autoComplete="off"
+                                      aria-label="Payment email TEST"
+                                    />
+                                  </label>
+                                )}
                                 <MercadoPagoSubscriptionCheckout
                                   amount={
                                     process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"

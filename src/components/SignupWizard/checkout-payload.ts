@@ -6,6 +6,7 @@ export function buildCheckoutPayload(
   cardToken: string,
   targetOrganizationId: string | null,
   newDistinctAdministration: boolean,
+  paymentEmailTest?: string,
 ) {
   return {
     offerId: data.plan,
@@ -14,6 +15,7 @@ export function buildCheckoutPayload(
     administrationName: data.administrationName,
     responsibleName: data.responsibleName,
     email: data.email,
+    ...(paymentEmailTest ? { paymentEmailTest } : {}),
     buildingName: data.buildingName,
     buildingAddress: data.address,
     units: Number(data.units),

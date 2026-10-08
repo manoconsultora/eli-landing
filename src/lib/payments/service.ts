@@ -1,4 +1,4 @@
-import { paymentsConfig } from "./config";
+import { isPreviewTestEnvironment, paymentsConfig } from "./config";
 import {
   hmac,
   matchesMercadoPagoSubscriptionBinding,
@@ -27,6 +27,7 @@ export type CheckoutInput = {
   administrationName: string;
   responsibleName: string;
   email: string;
+  paymentEmailTest?: string;
   buildingName: string;
   buildingAddress: string;
   units: number;
@@ -127,6 +128,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
   const body = (value ?? {}) as Record<string, unknown>;
   const offerId = body.offerId;
   const email = cleanText(body.email, 254).toLowerCase();
+  const paymentEmailTest = cleanText(body.paymentEmailTest, 254).toLowerCase();
   const units = Number(body.units);
   const result: CheckoutInput = {
     offerId: offerId === "professional" ? "professional" : "core",
@@ -135,6 +137,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
     administrationName: cleanText(body.administrationName, 160),
     responsibleName: cleanText(body.responsibleName, 160),
     email,
+    ...(paymentEmailTest ? { paymentEmailTest } : {}),
     buildingName: cleanText(body.buildingName, 160),
     buildingAddress: cleanText(body.buildingAddress, 240),
     units,
@@ -161,6 +164,16 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
       400,
       "Revisá los datos del checkout e intentá nuevamente.",
     );
+  }
+  if (paymentEmailTest && !isPreviewTestEnvironment()) {
+    throw new PaymentsError(
+      "payment_email_override_forbidden",
+      400,
+      "El email de pago TEST sólo está disponible en Preview TEST.",
+    );
+  }
+  if (paymentEmailTest && !EMAIL_REGEX.test(paymentEmailTest)) {
+    throw new PaymentsError("invalid_payment_email_test", 400, "Revisá el email de pago TEST.");
   }
   return result;
 }
@@ -194,6 +207,13 @@ export async function inspectAuthenticatedCheckout(accessToken: string) {
 }
 
 export async function beginCheckout(input: CheckoutInput, accessToken: string) {
+  if (input.paymentEmailTest && !isPreviewTestEnvironment()) {
+    throw new PaymentsError(
+      "payment_email_override_forbidden",
+      400,
+      "El email de pago TEST sólo está disponible en Preview TEST.",
+    );
+  }
   const verifiedEmail = await verifiedAuthEmail(accessToken);
   if (!verifiedEmail || verifiedEmail !== input.email) {
     throw new PaymentsError("authentication_required", 401, "Ingresá con el email indicado para continuar.");
@@ -294,7 +314,7 @@ export async function beginCheckout(input: CheckoutInput, accessToken: string) {
         preapprovalPlanId: checkout.provider_preapproval_plan_id ?? "stub-plan",
         reason: `ELI ${checkout.plan_name}`,
       },
-      payerEmail: input.email,
+      payerEmail: input.paymentEmailTest ?? input.email,
       cardToken: input.cardToken,
       externalReference: checkout.external_reference,
     });
