@@ -399,7 +399,7 @@ const attemptSelect =
   "provider_subscription_id,provider_status,failure_code,updated_at," +
   "organizations!payment_attempts_organization_id_fkey(status)," +
   "onboarding_sessions!payment_attempts_onboarding_session_id_fkey(status)," +
-  "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
+  "subscriptions!payment_attempts_subscription_organization_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
 
 async function getAttemptById(attemptId: string) {
   if (!/^[0-9a-f-]{36}$/i.test(attemptId)) {
@@ -580,7 +580,7 @@ export async function reconcileUnresolvedAttempts(limit = 25) {
       "&provider_subscription_id=not.is.null" +
       "&select=id,organization_id,external_reference,payer_email,amount,currency,status," +
       "provider_subscription_id,provider_status,failure_code,updated_at," +
-      "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)" +
+      "subscriptions!payment_attempts_subscription_organization_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)" +
       `&order=updated_at.asc&limit=${Math.max(1, Math.min(limit, 100))}`,
   );
   let reconciled = 0;
