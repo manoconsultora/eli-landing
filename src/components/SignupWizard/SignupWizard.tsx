@@ -1166,22 +1166,12 @@ export default function SignupWizard() {
 
                 {step === 5 && (
                   <StepShell
-                    title="ALL SET!"
-                    subtitle={payment?.operationalReady
-                      ? "Tu pago fue acreditado y tu administración está activa."
-                      : "Tu pago fue acreditado."}
+                    title="All Set!"
                     eyebrow="REGISTRO ELI"
                     strongTitle
                     oversizedTitle
                     splitTitleWeight
-                    lightSubtitle
-                  >
-                    <p className="-mt-2 text-base font-light leading-relaxed text-[#74738E] sm:text-lg lg:-mt-6">
-                      {payment?.operationalReady
-                        ? "Bienvenido a ELI. Ya podés ingresar a ELI Desk."
-                        : "El Setup de tu administración sigue pendiente. ELI Desk estará disponible cuando se complete."}
-                    </p>
-                  </StepShell>
+                  />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -1195,18 +1185,16 @@ export default function SignupWizard() {
               hideNext={step === 3 || step === 4}
             />
 
-            <p
-              className={`${step === 3 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
-              aria-live="polite"
-            >
-              {deskNotice
-                ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
-                : step === 5
-                  ? payment?.operationalReady
-                    ? "Suscripción activa confirmada por ELI."
-                    : "Pago aprobado; activación todavía pendiente."
+            {step !== 5 && (
+              <p
+                className={`${step === 3 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
+                aria-live="polite"
+              >
+                {deskNotice
+                  ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
                   : "No recargues la página mientras verificamos el estado."}
-            </p>
+              </p>
+            )}
           </div>
           {step === 5 && (
             <div
@@ -1548,8 +1536,8 @@ function StepShell({
   eyebrow = "Registro ELI",
 }: {
   title: string;
-  subtitle: string;
-  children: ReactNode;
+  subtitle?: string;
+  children?: ReactNode;
   compact?: boolean;
   strongTitle?: boolean;
   oversizedTitle?: boolean;
@@ -1563,17 +1551,19 @@ function StepShell({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2346DD]">
           {eyebrow}
         </p>
-        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} text-[#323159]`}>
+        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} ${splitTitleWeight ? "text-[#2346DD]" : "text-[#323159]"}`}>
           {splitTitleWeight ? (
             <>
-              <span className="font-extrabold">ALL</span>
-              <span className="font-thin"> SET!</span>
+              <span className="font-extrabold">All</span>
+              <span className="font-thin"> Set!</span>
             </>
           ) : title}
         </h2>
-        <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${lightSubtitle ? "font-light" : ""} ${compact ? "sm:text-base" : "sm:text-lg"}`}>
-          {subtitle}
-        </p>
+        {subtitle && (
+          <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${lightSubtitle ? "font-light" : ""} ${compact ? "sm:text-base" : "sm:text-lg"}`}>
+            {subtitle}
+          </p>
+        )}
       </div>
       {children}
     </div>
