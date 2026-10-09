@@ -50,6 +50,16 @@ export async function POST(request: NextRequest) {
         { status: error.httpStatus },
       );
     }
+    const code = error && typeof error === "object" && "code" in error
+      && (typeof error.code === "string" || typeof error.code === "number")
+      ? error.code
+      : undefined;
+    console.error("checkout_unavailable", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Non-Error thrown",
+      stack: error instanceof Error ? error.stack : undefined,
+      ...(code !== undefined ? { code } : {}),
+    });
     return NextResponse.json(
       {
         ok: false,

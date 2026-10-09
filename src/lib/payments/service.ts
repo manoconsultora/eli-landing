@@ -1,4 +1,4 @@
-import { paymentsConfig } from "./config";
+import { isPreviewTestEnvironment, paymentsConfig } from "./config";
 import {
   hmac,
   matchesMercadoPagoSubscriptionBinding,
@@ -27,6 +27,7 @@ export type CheckoutInput = {
   administrationName: string;
   responsibleName: string;
   email: string;
+  paymentEmailTest?: string;
   buildingName: string;
   buildingAddress: string;
   units: number;
@@ -127,6 +128,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
   const body = (value ?? {}) as Record<string, unknown>;
   const offerId = body.offerId;
   const email = cleanText(body.email, 254).toLowerCase();
+  const paymentEmailTest = cleanText(body.paymentEmailTest, 254).toLowerCase();
   const units = Number(body.units);
   const result: CheckoutInput = {
     offerId: offerId === "professional" ? "professional" : "core",
@@ -135,6 +137,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
     administrationName: cleanText(body.administrationName, 160),
     responsibleName: cleanText(body.responsibleName, 160),
     email,
+    ...(paymentEmailTest ? { paymentEmailTest } : {}),
     buildingName: cleanText(body.buildingName, 160),
     buildingAddress: cleanText(body.buildingAddress, 240),
     units,
@@ -161,6 +164,16 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
       400,
       "Revisá los datos del checkout e intentá nuevamente.",
     );
+  }
+  if (paymentEmailTest && !isPreviewTestEnvironment()) {
+    throw new PaymentsError(
+      "payment_email_override_forbidden",
+      400,
+      "El email de pago TEST sólo está disponible en Preview TEST.",
+    );
+  }
+  if (paymentEmailTest && !EMAIL_REGEX.test(paymentEmailTest)) {
+    throw new PaymentsError("invalid_payment_email_test", 400, "Revisá el email de pago TEST.");
   }
   return result;
 }
@@ -194,6 +207,13 @@ export async function inspectAuthenticatedCheckout(accessToken: string) {
 }
 
 export async function beginCheckout(input: CheckoutInput, accessToken: string) {
+  if (input.paymentEmailTest && !isPreviewTestEnvironment()) {
+    throw new PaymentsError(
+      "payment_email_override_forbidden",
+      400,
+      "El email de pago TEST sólo está disponible en Preview TEST.",
+    );
+  }
   const verifiedEmail = await verifiedAuthEmail(accessToken);
   if (!verifiedEmail || verifiedEmail !== input.email) {
     throw new PaymentsError("authentication_required", 401, "Ingresá con el email indicado para continuar.");
@@ -294,7 +314,7 @@ export async function beginCheckout(input: CheckoutInput, accessToken: string) {
         preapprovalPlanId: checkout.provider_preapproval_plan_id ?? "stub-plan",
         reason: `ELI ${checkout.plan_name}`,
       },
-      payerEmail: input.email,
+      payerEmail: input.paymentEmailTest ?? input.email,
       cardToken: input.cardToken,
       externalReference: checkout.external_reference,
     });
@@ -379,7 +399,7 @@ const attemptSelect =
   "provider_subscription_id,provider_status,failure_code,updated_at," +
   "organizations!payment_attempts_organization_id_fkey(status)," +
   "onboarding_sessions!payment_attempts_onboarding_session_id_fkey(status)," +
-  "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
+  "subscriptions!payment_attempts_subscription_organization_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)";
 
 async function getAttemptById(attemptId: string) {
   if (!/^[0-9a-f-]{36}$/i.test(attemptId)) {
@@ -511,8 +531,11 @@ export async function reconcileProviderState(input: {
     p_provider_payment_status_detail: input.payment?.status_detail ?? null,
     p_amount: input.payment?.transaction_amount ?? null,
     p_currency: input.payment?.currency_id ?? null,
-    p_period_start: input.subscription.auto_recurring?.start_date ?? null,
-    p_period_end: input.subscription.auto_recurring?.end_date ?? null,
+    p_period_start:
+      input.payment?.date_approved ??
+      input.subscription.auto_recurring?.start_date ??
+      null,
+    p_period_end: null,
     p_provider_snapshot: {
       subscriptionStatus: input.subscription.status,
       paymentStatus: input.payment?.status ?? null,
@@ -560,7 +583,7 @@ export async function reconcileUnresolvedAttempts(limit = 25) {
       "&provider_subscription_id=not.is.null" +
       "&select=id,organization_id,external_reference,payer_email,amount,currency,status," +
       "provider_subscription_id,provider_status,failure_code,updated_at," +
-      "subscriptions!payment_attempts_subscription_id_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)" +
+      "subscriptions!payment_attempts_subscription_organization_fkey(id,status,entitlement_state,first_payment_approved_at,current_period_end,cancel_at_period_end)" +
       `&order=updated_at.asc&limit=${Math.max(1, Math.min(limit, 100))}`,
   );
   let reconciled = 0;

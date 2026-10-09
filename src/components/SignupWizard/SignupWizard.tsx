@@ -30,9 +30,26 @@ import {
 
 import { tiers } from "@/data/pricing";
 import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
+import { buildCheckoutPayload } from "./checkout-payload";
+import { startSequentialPolling } from "./payment-polling";
+import {
+  authReturnParam,
+  authReturnStorageKey,
+  buildLandingAuthCallbackUrl,
+  findAuthReturnForEmail,
+  hasAuthCallbackError,
+  parseAuthReturn,
+  pruneAuthReturns,
+  readAuthReturnById,
+  restoreAuthReturnData,
+  sanitizeAuthCallbackUrl,
+  serializeAuthReturn,
+  type WizardData,
+} from "./auth-return";
 
 const steps = [
   "Empecemos",
+  "Verificar email",
   "Primer consorcio",
   "Checkout",
   "Procesando pago",
@@ -40,16 +57,7 @@ const steps = [
 ] as const;
 
 type PlanSlug = "core" | "professional";
-
-type WizardData = {
-  administrationName: string;
-  responsibleName: string;
-  email: string;
-  buildingName: string;
-  address: string;
-  units: string;
-  plan: PlanSlug;
-};
+type AuthLinkState = "already-activated" | "expired";
 
 const initialData: WizardData = {
   administrationName: "",
@@ -62,6 +70,7 @@ const initialData: WizardData = {
 };
 
 const storageKey = "eli-signup-wizard-ui-01";
+const defaultTestPaymentEmail = "test_user_1908795610272452659@testuser.com";
 
 type PaymentSession = {
   attemptId: string;
@@ -100,7 +109,8 @@ export default function SignupWizard() {
   const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
   const requestedPlan = searchParams.get("plan");
-  const [step, setStep] = useState(0);
+  const resumeToConsortium = searchParams.get("eli_activation_resume") === "1";
+  const [step, setStep] = useState(resumeToConsortium ? 2 : 0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [data, setData] = useState<WizardData>(() => ({
     ...initialData,
@@ -118,12 +128,34 @@ export default function SignupWizard() {
   const [payment, setPayment] = useState<PaymentSession>();
   const [paymentError, setPaymentError] = useState<string>();
   const [authClient, setAuthClient] = useState<SupabaseClient>();
+  const authClientRef = useRef<SupabaseClient | null>(null);
+  const authRestoreRef = useRef<Promise<{
+    email?: string;
+    account?: AccountInspection;
+    notice?: string;
+    activatedViaCallback?: boolean;
+    authCallbackError?: boolean;
+  }> | null>(null);
+  const callbackReturnRef = useRef(false);
+  const authDraftRef = useRef<ReturnType<typeof parseAuthReturn>>(null);
+  const authDraftReadRef = useRef(false);
+  const authDraftRecoveredByEmailRef = useRef(false);
+  const sessionDraftEmailRef = useRef<string | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState<string>();
+  const [postActivation, setPostActivation] = useState(() => Boolean(searchParams.get("code")));
+  const [authLinkState, setAuthLinkState] = useState<AuthLinkState>();
   const [account, setAccount] = useState<AccountInspection>();
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>();
   const [distinctAdministration, setDistinctAdministration] = useState(false);
   const [signInNotice, setSignInNotice] = useState<string>();
   const [signInBusy, setSignInBusy] = useState(false);
+  const [authConfigurationReady, setAuthConfigurationReady] = useState(false);
+  const [checkoutConfiguration, setCheckoutConfiguration] = useState<{
+    ready: boolean;
+    missing: string[];
+    previewTest: boolean;
+  }>();
+  const [paymentEmailTest, setPaymentEmailTest] = useState(defaultTestPaymentEmail);
   const paymentAttemptId = payment?.attemptId;
   const paymentStatusToken = payment?.statusToken;
   const authorizationHeader = useCallback(async () => {
@@ -137,52 +169,96 @@ export default function SignupWizard() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
-      setSignInNotice("El ingreso no está configurado en este entorno.");
+      setSignInNotice("Falta configurar NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para verificar el email en este entorno.");
       return;
     }
-    const client = createClient(url, key, {
+    const client = authClientRef.current ?? createClient(url, key, {
       auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true },
     });
+    authClientRef.current = client;
+    setAuthConfigurationReady(true);
     setAuthClient(client);
     let cancelled = false;
-    const restore = async () => {
+    // Share the restore promise across effect replay. A PKCE code is single-use;
+    // React Strict Mode must not exchange it twice or consume its verifier twice.
+    authRestoreRef.current ??= (async () => {
+      let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
+      const authCallbackError = hasAuthCallbackError(callbackUrl);
+      callbackReturnRef.current = Boolean(code || authCallbackError);
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
-        callbackUrl.searchParams.delete("code");
-        window.history.replaceState(window.history.state, "", callbackUrl);
-        if (error) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+        if (error) notice = "No pudimos completar el ingreso. Solicitá un enlace nuevo.";
+      }
+      if (code || authCallbackError) {
+        window.history.replaceState(window.history.state, "", sanitizeAuthCallbackUrl(callbackUrl));
       }
       const { data: userData } = await client.auth.getUser();
-      if (cancelled || !userData.user?.email || !userData.user.email_confirmed_at) return;
+      if (!userData.user?.email || !userData.user.email_confirmed_at) return { notice, authCallbackError };
       const email = userData.user.email.trim().toLowerCase();
-      setVerifiedEmail(email);
-      setData((current) => ({ ...current, email }));
       const { data: sessionData } = await client.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!token) return;
+      if (!token) return { email, notice, authCallbackError };
       const response = await fetch("/api/payments/checkout", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      if (!response.ok || cancelled) {
-        setSignInNotice("No pudimos verificar tus administraciones. Intentá nuevamente.");
-        return;
+      if (!response.ok) {
+        return {
+          email,
+          notice: "No pudimos verificar tus administraciones. Intentá nuevamente.",
+          activatedViaCallback: Boolean(code),
+          authCallbackError,
+        };
       }
       const result = (await response.json()) as { account?: AccountInspection };
-      if (!result.account || cancelled) return;
-      setAccount(result.account);
-      if (result.account.pending.length === 1 && result.account.organizations.length === 0) {
-        setSelectedOrganizationId(result.account.pending[0].organization_id);
+      return { email, account: result.account, notice, activatedViaCallback: Boolean(code), authCallbackError };
+    })();
+    void authRestoreRef.current.then((result) => {
+      if (cancelled) return;
+      if (result.notice) setSignInNotice(result.notice);
+      if (result.email) {
+        setVerifiedEmail(result.email);
+        setData((current) => ({ ...current, email: result.email! }));
       }
-    };
-    void restore();
+      if (result.authCallbackError) {
+        setAuthLinkState(result.email ? "already-activated" : "expired");
+      }
+      if (result.activatedViaCallback) setPostActivation(true);
+      if (!result.account) return;
+      setAccount(result.account);
+      if (result.account.pending.length + result.account.organizations.length === 1) {
+        setSelectedOrganizationId(
+          result.account.pending[0]?.organization_id ?? result.account.organizations[0]?.organization_id,
+        );
+      }
+    }).catch(() => {
+      if (!cancelled) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/payments/configuration", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("configuration_unavailable");
+        return (await response.json()) as { ready: boolean; missing: string[]; previewTest: boolean };
+      })
+      .then((result) => {
+        if (!cancelled) setCheckoutConfiguration(result);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCheckoutConfiguration({ ready: false, missing: ["No pudimos verificar la configuración del checkout."], previewTest: false });
+        }
+      });
     return () => { cancelled = true; };
   }, []);
 
   useLayoutEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
 
     const content = step3View === "review"
       ? step3ReviewContentRef.current
@@ -203,7 +279,21 @@ export default function SignupWizard() {
 
   useEffect(() => {
     try {
-      const saved = window.sessionStorage.getItem(storageKey);
+      if (!authDraftReadRef.current) {
+        authDraftReadRef.current = true;
+        pruneAuthReturns(window.localStorage);
+        const callbackUrl = new URL(window.location.href);
+        const key = authReturnStorageKey(callbackUrl.searchParams.get(authReturnParam));
+        if (key) {
+          authDraftRef.current = readAuthReturnById(window.localStorage, callbackUrl.searchParams.get(authReturnParam));
+          if (!authDraftRef.current) setSignInNotice("El enlace ya no conserva tus datos. Completalos nuevamente para continuar.");
+          callbackUrl.searchParams.delete(authReturnParam);
+          window.history.replaceState(window.history.state, "", callbackUrl);
+        }
+      }
+      const saved = authDraftRef.current
+        ? JSON.stringify(authDraftRef.current)
+        : window.sessionStorage.getItem(storageKey);
       if (!saved) {
         setCheckoutNonce(window.crypto.randomUUID());
         return;
@@ -212,10 +302,14 @@ export default function SignupWizard() {
       const parsed = JSON.parse(saved) as {
         data?: Partial<WizardData>;
         step?: number;
-        eliSignupSubstep?: "review" | "payment";
+        eliSignupSubstep?: "verification" | "review" | "payment";
         checkoutNonce?: string;
         payment?: PaymentSession;
       };
+
+      if (!authDraftRef.current) {
+        sessionDraftEmailRef.current = parsed.data?.email?.trim().toLowerCase() ?? null;
+      }
 
       setData((current) => ({
         ...current,
@@ -234,7 +328,7 @@ export default function SignupWizard() {
         parsed.step >= 0 &&
         parsed.step < steps.length
       ) {
-        setStep(parsed.step > 2 && !parsed.payment ? 2 : parsed.step);
+        setStep(resumeToConsortium ? 2 : parsed.step > 3 && !parsed.payment ? 2 : parsed.step);
       }
     } catch {
       window.sessionStorage.removeItem(storageKey);
@@ -244,7 +338,34 @@ export default function SignupWizard() {
     } finally {
       setHydrated(true);
     }
-  }, [requestedPlan]);
+  }, [requestedPlan, resumeToConsortium]);
+
+  useEffect(() => {
+    if (
+      !hydrated ||
+      !verifiedEmail ||
+      authDraftRef.current ||
+      authDraftRecoveredByEmailRef.current
+    ) return;
+
+    authDraftRecoveredByEmailRef.current = true;
+    try {
+      pruneAuthReturns(window.localStorage);
+      const match = findAuthReturnForEmail(window.localStorage, verifiedEmail);
+      if (!match) return;
+
+      authDraftRef.current = match.draft;
+      setData((current) => ({
+        ...restoreAuthReturnData(current, match.draft.data, verifiedEmail, sessionDraftEmailRef.current),
+        ...(requestedPlan === "core" || requestedPlan === "professional"
+          ? { plan: requestedPlan }
+          : {}),
+      }));
+      setCheckoutNonce(match.draft.checkoutNonce);
+    } catch {
+      // The normal wizard state remains usable when browser storage is unavailable.
+    }
+  }, [hydrated, requestedPlan, verifiedEmail]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -255,14 +376,15 @@ export default function SignupWizard() {
   }, [checkoutNonce, data, hydrated, payment, step, step3View]);
 
   useEffect(() => {
-    if (step !== 3 || !paymentAttemptId || paymentApproved) return;
-    let cancelled = false;
+    if (step !== 4 || !paymentAttemptId || paymentApproved) return;
     let cycle = 0;
-    const refresh = async () => {
+    let active = true;
+    const stopPolling = startSequentialPolling(async () => {
+      if (!active) return false;
       cycle += 1;
       const reconcile = cycle % 4 === 0;
       const authorization = await authorizationHeader();
-      if (!authorization) return;
+      if (!authorization || !active) return active;
       const response = await fetch(
         reconcile ? "/api/payments/reconcile" : `/api/payments/status?attempt=${paymentAttemptId}`,
         {
@@ -275,17 +397,25 @@ export default function SignupWizard() {
           cache: "no-store",
         },
       );
-      if (!response.ok || cancelled) return;
+      if (!response.ok || !active) return active;
       const result = (await response.json()) as { checkout?: PaymentSession };
-      if (!result.checkout) return;
+      if (!result.checkout || !active) return active;
       setPayment((current) => ({ ...result.checkout!, statusToken: current?.statusToken ?? paymentStatusToken }));
-      if (result.checkout.paymentApproved) navigate(4, 1);
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 3000);
+      if (result.checkout.paymentApproved) {
+        active = false;
+        navigate(5, 1);
+        return false;
+      }
+      if (result.checkout.status === "rejected") {
+        active = false;
+        return false;
+      }
+      return true;
+    }, 3000);
+
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      active = false;
+      stopPolling();
     };
   }, [authClient, authorizationHeader, paymentApproved, paymentAttemptId, paymentStatusToken, step]);
 
@@ -296,7 +426,7 @@ export default function SignupWizard() {
       | { eliSignupStep?: number; eliSignupSubstep?: "review" | "payment" }
       | null;
 
-    const expectedSubstep = step === 2 ? step3View : undefined;
+    const expectedSubstep = step === 3 ? step3View : undefined;
     if (
       currentState?.eliSignupStep !== step ||
       currentState?.eliSignupSubstep !== expectedSubstep
@@ -318,11 +448,11 @@ export default function SignupWizard() {
       setDirection(nextStep < step ? -1 : 1);
       setStep(nextStep);
       setStep3View(
-        nextStep === 2 && event.state?.eliSignupSubstep === "payment"
+        nextStep === 3 && event.state?.eliSignupSubstep === "payment"
           ? "payment"
           : "review",
       );
-      if (nextStep === 2 && event.state?.eliSignupSubstep === "payment") {
+      if (nextStep === 3 && event.state?.eliSignupSubstep === "payment") {
         setHasOpenedPayment(true);
       }
       setAttempted(false);
@@ -336,6 +466,29 @@ export default function SignupWizard() {
     () => tiers.find((tier) => tier.slug === data.plan) ?? tiers[0],
     [data.plan],
   );
+  const emailIsVerified = Boolean(
+    verifiedEmail && verifiedEmail === data.email.trim().toLowerCase(),
+  );
+  const accountEntries = (account?.pending.length ?? 0) + (account?.organizations.length ?? 0);
+  const selectedPending = account?.pending.find((item) => item.organization_id === selectedOrganizationId);
+  const selectedExisting = account?.organizations.find((item) => item.organization_id === selectedOrganizationId);
+  const pendingCanStart = Boolean(
+    selectedPending && ["created", "submitting", "provider_pending", "pending_review", "indeterminate", "approved"].includes(selectedPending.attempt_status ?? ""),
+  );
+  const accountChoiceReady = Boolean(
+    account && (
+      accountEntries === 0 ||
+      distinctAdministration ||
+      (selectedPending && pendingCanStart)
+    ) && !selectedExisting,
+  );
+  const administrationNamesReady = Boolean(
+    data.administrationName.trim() && data.responsibleName.trim(),
+  );
+  const checkoutCanStart = Boolean(
+    checkoutNonce && checkoutConfiguration?.ready && authConfigurationReady &&
+    emailIsVerified && account && accountChoiceReady && administrationNamesReady,
+  );
 
   const stepValid = [
     Boolean(
@@ -343,6 +496,7 @@ export default function SignupWizard() {
         data.responsibleName.trim() &&
         isValidEmail(data.email),
     ),
+    Boolean(emailIsVerified),
     Boolean(
       data.buildingName.trim() &&
         data.address.trim() &&
@@ -357,6 +511,17 @@ export default function SignupWizard() {
     setData((current) => ({ ...current, [key]: value }));
   }
 
+  function updateEmail(value: string) {
+    setData((current) => ({ ...current, email: value }));
+    if (value.trim().toLowerCase() !== verifiedEmail) {
+      setVerifiedEmail(undefined);
+      setAccount(undefined);
+      setSelectedOrganizationId(undefined);
+      setDistinctAdministration(false);
+      setSignInNotice(undefined);
+    }
+  }
+
   function navigate(nextStep: number, nextDirection: 1 | -1) {
     if (nextStep < 0 || nextStep >= steps.length) return;
 
@@ -368,17 +533,21 @@ export default function SignupWizard() {
       {
         ...window.history.state,
         eliSignupStep: nextStep,
-        eliSignupSubstep: nextStep === 2 ? "review" : undefined,
+        eliSignupSubstep: nextStep === 3 ? "review" : undefined,
       },
       "",
     );
   }
 
   function continueToPayment() {
+    if (!administrationNamesReady) {
+      navigate(0, -1);
+      return;
+    }
     setHasOpenedPayment(true);
     setStep3View("payment");
     window.history.pushState(
-      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
+      { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "payment" },
       "",
     );
   }
@@ -386,11 +555,11 @@ export default function SignupWizard() {
   function returnToPayment() {
     setHasOpenedPayment(true);
     setDirection(-1);
-    setStep(2);
+    setStep(3);
     setStep3View("payment");
     setAttempted(false);
     window.history.pushState(
-      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "payment" },
+      { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "payment" },
       "",
     );
   }
@@ -399,58 +568,6 @@ export default function SignupWizard() {
     event?.preventDefault();
     setAttempted(true);
     if (!stepValid || step >= steps.length - 1) return;
-    if (step === 0) {
-      const email = data.email.trim().toLowerCase();
-      if (!verifiedEmail || verifiedEmail !== email || !account) {
-        setSignInNotice("Ingresá con este email para continuar.");
-        return;
-      }
-      const pending = account.pending.find((item) => item.organization_id === selectedOrganizationId);
-      if (pending) {
-        if (!pending.attempt_id || !["created", "submitting", "provider_pending", "pending_review", "indeterminate", "approved"].includes(pending.attempt_status ?? "")) {
-          setSignInNotice("Esta alta requiere revisión antes de continuar con el pago.");
-          return;
-        }
-        setData((current) => ({
-          ...current,
-          administrationName: pending.administration_name ?? pending.organization_name,
-          responsibleName: pending.responsible_name ?? current.responsibleName,
-          buildingName: pending.building_name ?? current.buildingName,
-          address: pending.building_address ?? current.address,
-          units: pending.units === null ? current.units : String(pending.units),
-          ...(pending.plan_code === "core" || pending.plan_code === "professional"
-            ? { plan: pending.plan_code }
-            : {}),
-        }));
-        if (pending.attempt_status === "created") {
-          navigate(2, 1);
-          return;
-        }
-        setPayment({
-          attemptId: pending.attempt_id,
-          status: pending.attempt_status ?? "provider_pending",
-          entitlementState: "PENDING_PAYMENT",
-          active: false,
-          paymentApproved: false,
-          operationalReady: false,
-        });
-        navigate(3, 1);
-        return;
-      }
-      const existing = account.organizations.find((item) => item.organization_id === selectedOrganizationId);
-      if (existing) {
-        setSignInNotice(
-          existing.entitlement_state === "ACTIVE"
-            ? "Gestioná el plan de esta administración desde ELI Desk."
-            : "Esta administración requiere regularización. No iniciamos otro cobro.",
-        );
-        return;
-      }
-      if ((account.pending.length > 0 || account.organizations.length > 0) && !distinctAdministration) {
-        setSignInNotice("Elegí una administración o indicá que vas a registrar otra distinta.");
-        return;
-      }
-    }
     navigate(step + 1, 1);
   }
 
@@ -458,6 +575,25 @@ export default function SignupWizard() {
     if (step === 0) return;
     window.history.back();
   }
+
+  useEffect(() => {
+    if (!hydrated || step !== 1 || !emailIsVerified || postActivation || callbackReturnRef.current) return;
+    setDirection(1);
+    setStep(2);
+    setAttempted(false);
+    window.history.pushState(
+      { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: undefined },
+      "",
+    );
+  }, [emailIsVerified, hydrated, postActivation, step]);
+
+  useEffect(() => {
+    if (searchParams.get("eli_activation_resume") === "1") {
+      callbackReturnRef.current = false;
+      setPostActivation(false);
+      setStep(2);
+    }
+  }, [searchParams]);
 
   function openDesk() {
     const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
@@ -470,14 +606,33 @@ export default function SignupWizard() {
 
   async function requestEmailSignIn() {
     const email = data.email.trim().toLowerCase();
-    if (!authClient || !isValidEmail(email) || signInBusy) return;
+    if (!authClient) {
+      setSignInNotice("Falta configurar NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY para enviar el enlace.");
+      return;
+    }
+    if (!isValidEmail(email) || signInBusy) return;
     setSignInBusy(true);
     setSignInNotice(undefined);
     try {
-      await authClient.auth.signInWithOtp({
+      const draftId = window.crypto.randomUUID();
+      const draftKey = authReturnStorageKey(draftId)!;
+      try {
+        pruneAuthReturns(window.localStorage);
+        window.localStorage.setItem(draftKey, serializeAuthReturn(data, checkoutNonce));
+      } catch {
+        setSignInNotice("No pudimos conservar tus datos en este navegador. Permití el almacenamiento local y solicitá el enlace nuevamente.");
+        return;
+      }
+      const { error } = await authClient.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+        options: {
+          emailRedirectTo: buildLandingAuthCallbackUrl(window.location.origin, data.plan, draftId),
+        },
       });
+      if (error) {
+        window.localStorage.removeItem(draftKey);
+        throw error;
+      }
       setSignInNotice("Si este email puede ingresar, vas a recibir un enlace para continuar.");
     } catch {
       setSignInNotice("No pudimos enviar el enlace. Revisá el email e intentá nuevamente.");
@@ -489,27 +644,61 @@ export default function SignupWizard() {
   async function createSubscription(cardToken: string) {
     setPaymentError(undefined);
     const authorization = await authorizationHeader();
-    if (!authorization || !verifiedEmail || verifiedEmail !== data.email.trim().toLowerCase()) {
-      const message = "Ingresá con tu email antes de iniciar el pago.";
+    if (!authorization || !emailIsVerified) {
+      const message = "Verificá tu email con el enlace antes de crear la suscripción.";
       setPaymentError(message);
       throw new Error(message);
+    }
+    if (!checkoutConfiguration?.ready) {
+      const message = "El checkout no está listo en este entorno. Revisá la configuración indicada arriba.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (!account) {
+      const message = "Primero debemos verificar si ya existe una administración asociada a tu cuenta.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (selectedExisting) {
+      const message = selectedExisting.entitlement_state === "ACTIVE"
+        ? "Esta administración ya está activa. Gestioná su plan desde ELI Desk."
+        : "Esta administración requiere regularización. No iniciamos otro cobro.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (accountEntries > 0 && !distinctAdministration && !selectedPending) {
+      const message = "Elegí una administración existente o indicá que vas a registrar una distinta.";
+      setPaymentError(message);
+      throw new Error(message);
+    }
+    if (selectedPending && selectedPending.attempt_status !== "created") {
+      if (!selectedPending.attempt_id || !pendingCanStart) {
+        const message = "Esta alta requiere revisión antes de reanudar el pago.";
+        setPaymentError(message);
+        throw new Error(message);
+      }
+      setPayment({
+        attemptId: selectedPending.attempt_id,
+        status: selectedPending.attempt_status ?? "provider_pending",
+        entitlementState: "PENDING_PAYMENT",
+        active: false,
+        paymentApproved: selectedPending.attempt_status === "approved",
+        operationalReady: false,
+      });
+      navigate(selectedPending.attempt_status === "approved" ? 5 : 4, 1);
+      return;
     }
     const response = await fetch("/api/payments/checkout", {
       method: "POST",
       headers: { "content-type": "application/json", Authorization: authorization },
-      body: JSON.stringify({
-        offerId: data.plan,
+      body: JSON.stringify(buildCheckoutPayload(
+        data,
         checkoutNonce,
         cardToken,
-        administrationName: data.administrationName,
-        responsibleName: data.responsibleName,
-        email: data.email,
-        buildingName: data.buildingName,
-        buildingAddress: data.address,
-        units: Number(data.units),
-        targetOrganizationId: distinctAdministration ? null : selectedOrganizationId ?? null,
-        newDistinctAdministration: distinctAdministration,
-      }),
+        distinctAdministration ? null : selectedOrganizationId ?? null,
+        distinctAdministration,
+        checkoutConfiguration.previewTest ? paymentEmailTest : undefined,
+      )),
     });
     const result = (await response.json()) as {
       checkout?: PaymentSession;
@@ -521,7 +710,24 @@ export default function SignupWizard() {
       throw new Error(message);
     }
     setPayment(result.checkout);
-    navigate(result.checkout.paymentApproved ? 4 : 3, 1);
+    navigate(result.checkout.paymentApproved ? 5 : 4, 1);
+  }
+
+  if (authLinkState) {
+    return (
+      <AuthLinkStatus
+        state={authLinkState}
+        onContinue={() => {
+          setAuthLinkState(undefined);
+          setDirection(1);
+          setStep(verifiedEmail ? 2 : 1);
+        }}
+      />
+    );
+  }
+
+  if (postActivation) {
+    return <ActivationWelcome plan={data.plan} />;
   }
 
   return (
@@ -530,11 +736,11 @@ export default function SignupWizard() {
         <EditorialPanel step={step} />
 
         <section className="relative -mt-7 flex min-h-[calc(100dvh-12.5rem)] flex-col overflow-hidden rounded-t-[30px] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-7 sm:px-8 lg:mt-0 lg:min-h-0 lg:rounded-[32px] lg:px-10 lg:pb-8 lg:pt-8 xl:px-14 xl:pb-6 xl:pt-10">
-          <div className={step === 4 ? "relative z-10" : ""}>
+          <div className={step === 5 ? "relative z-10" : ""}>
             <Progress currentStep={step} />
           </div>
 
-          <div className={`relative mx-auto flex w-full flex-1 flex-col ${step === 4 ? "z-10" : ""} ${step === 2 ? "max-w-[980px] pt-4 sm:pt-5 lg:pt-4" : "max-w-[760px] pt-8 sm:pt-10 lg:pt-12"}`}>
+          <div className={`relative mx-auto flex w-full flex-1 flex-col ${step === 5 ? "z-10" : ""} ${step === 3 ? "max-w-[980px] pt-4 sm:pt-5 lg:pt-4" : "max-w-[760px] pt-8 sm:pt-10 lg:pt-12"}`}>
             <AnimatePresence initial={false} custom={direction} mode="wait">
               <motion.div
                 key={step}
@@ -591,7 +797,7 @@ export default function SignupWizard() {
                         label="Email principal"
                         type="email"
                         value={data.email}
-                        onChange={(value) => update("email", value)}
+                        onChange={updateEmail}
                         placeholder="nombre@administracion.com"
                         autoComplete="email"
                         error={
@@ -600,68 +806,47 @@ export default function SignupWizard() {
                             : undefined
                         }
                       />
-                      <div className="grid gap-3 sm:col-span-2">
-                        {verifiedEmail === data.email.trim().toLowerCase() ? (
-                          <p className="text-sm font-medium text-emerald-700">Email verificado: {verifiedEmail}</p>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void requestEmailSignIn()}
-                            disabled={!authClient || !isValidEmail(data.email) || signInBusy}
-                            className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {signInBusy ? "Enviando enlace…" : "Continuar con este email"}
-                          </button>
-                        )}
-                        {account && (account.pending.length > 0 || account.organizations.length > 0) && (
-                          <>
-                            <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
-                              Elegí una administración vinculada a tu cuenta
-                              <select
-                                id="existing-organization"
-                                value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
-                                onChange={(event) => {
-                                  setDistinctAdministration(false);
-                                  setSelectedOrganizationId(event.target.value || undefined);
-                                  setSignInNotice(undefined);
-                                }}
-                                className="min-h-11 rounded-xl border border-[#323159]/15 bg-white px-3 font-normal"
-                              >
-                                <option value="">Seleccionar administración</option>
-                                {account.pending.map((item) => (
-                                  <option key={item.organization_id} value={item.organization_id}>
-                                    {item.organization_name} · alta pendiente
-                                  </option>
-                                ))}
-                                {account.organizations.map((item) => (
-                                  <option key={item.organization_id} value={item.organization_id}>
-                                    {item.organization_name} · {item.entitlement_state === "ACTIVE" ? "activa" : "requiere regularización"}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex items-start gap-2 text-sm text-[#323159]/75">
-                              <input
-                                type="checkbox"
-                                checked={distinctAdministration}
-                                onChange={(event) => {
-                                  setDistinctAdministration(event.target.checked);
-                                  if (event.target.checked) setSelectedOrganizationId(undefined);
-                                  setSignInNotice(undefined);
-                                }}
-                                className="mt-1 accent-[#2346DD]"
-                              />
-                              Voy a registrar una administración distinta
-                            </label>
-                          </>
-                        )}
-                        {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
-                      </div>
                     </form>
                   </StepShell>
                 )}
 
                 {step === 1 && (
+                  <StepShell
+                    title="Verificá tu email"
+                    subtitle="Confirmá tu email para proteger tu cuenta y continuar con el alta."
+                  >
+                    <div className="grid gap-4 rounded-[24px] border border-[#323159]/10 bg-[#F7F8FC] p-5 sm:p-6">
+                      {emailIsVerified ? (
+                        <p className="text-sm font-semibold text-emerald-700" role="status">
+                          Email verificado: {verifiedEmail}
+                        </p>
+                      ) : (
+                        <>
+                          <div>
+                            <h3 className="font-semibold">Te enviamos un enlace a {data.email}</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-[#323159]/65">
+                              Abrilo desde cualquier pestaña o dispositivo. Tus datos y el plan elegido se conservan para que puedas volver y seguir donde dejaste.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void requestEmailSignIn()}
+                            disabled={!authConfigurationReady || !isValidEmail(data.email) || signInBusy}
+                            className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {signInBusy ? "Enviando enlace…" : signInNotice ? "Reenviar enlace" : "Enviar enlace de verificación"}
+                          </button>
+                          {!authConfigurationReady && (
+                            <p className="text-sm text-amber-900" role="status">Falta configurar Supabase Auth en este entorno.</p>
+                          )}
+                        </>
+                      )}
+                      {signInNotice && <p role="status" className="text-sm text-[#323159]/70">{signInNotice}</p>}
+                    </div>
+                  </StepShell>
+                )}
+
+                {step === 2 && (
                   <StepShell
                     title="Primer consorcio"
                     subtitle="Arrancamos por el primero."
@@ -717,8 +902,8 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 2 && (
-                  <StepShell title="Tu alta ELI" subtitle="Revisá tu plan y completá el pago seguro." compact>
+                {step === 3 && (
+                  <StepShell title="Elegí tu plan" subtitle="Seleccioná tu plan y completá el pago seguro." compact>
                     <div className="[perspective:1800px]">
                       <div
                         className="relative grid [transform-style:preserve-3d]"
@@ -796,7 +981,7 @@ export default function SignupWizard() {
                               onClick={continueToPayment}
                               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[17px] bg-[#2346DD] px-5 font-semibold text-white transition hover:bg-[#1939c4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
                             >
-                              Continuar al pago <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                              {administrationNamesReady ? "Continuar al pago" : "Completar datos iniciales"} <ArrowRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                           </div>
                         </section>
@@ -809,17 +994,16 @@ export default function SignupWizard() {
                           inert={step3View !== "payment"}
                           data-step3-module-back
                         >
-                          <div ref={step3PaymentContentRef} className="grid gap-3 p-4 sm:p-5">
+                          <div ref={step3PaymentContentRef} className="grid gap-3 p-3 sm:p-4">
                             <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
                               <div className="min-w-0">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2346DD]">Paso 3B</p>
                               <h3 id="step3-payment-heading" className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#323159]">Pago seguro</h3>
                               <button
                                 type="button"
                                 onClick={() => {
                                   setStep3View("review");
                                   window.history.pushState(
-                                    { ...window.history.state, eliSignupStep: 2, eliSignupSubstep: "review" },
+                                    { ...window.history.state, eliSignupStep: 3, eliSignupSubstep: "review" },
                                     "",
                                   );
                                 }}
@@ -840,8 +1024,82 @@ export default function SignupWizard() {
                                 <p className="mt-0.5 max-w-[320px] truncate text-xs text-[#323159]/55">{data.administrationName} · {data.buildingName}</p>
                               </div>
                             </div>
+                            <section className="grid gap-3" aria-label="Administración">
+                              {account && accountEntries > 0 && (
+                                <>
+                                  <label className="grid gap-1.5 text-sm font-medium" htmlFor="existing-organization">
+                                    Elegí la administración a vincular
+                                    <select
+                                      id="existing-organization"
+                                      value={distinctAdministration ? "" : selectedOrganizationId ?? ""}
+                                      onChange={(event) => {
+                                        setDistinctAdministration(false);
+                                        setSelectedOrganizationId(event.target.value || undefined);
+                                        setPaymentError(undefined);
+                                      }}
+                                      className="min-h-11 rounded-xl border border-[#323159]/15 bg-white px-3 font-normal"
+                                    >
+                                      <option value="">Seleccionar administración</option>
+                                      {account.pending.map((item) => (
+                                        <option key={item.organization_id} value={item.organization_id}>
+                                          {item.organization_name} · alta pendiente
+                                        </option>
+                                      ))}
+                                      {account.organizations.map((item) => (
+                                        <option key={item.organization_id} value={item.organization_id}>
+                                          {item.organization_name} · {item.entitlement_state === "ACTIVE" ? "activa" : "requiere regularización"}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="flex items-start gap-2 text-sm text-[#323159]/75">
+                                    <input
+                                      type="checkbox"
+                                      checked={distinctAdministration}
+                                      onChange={(event) => {
+                                        setDistinctAdministration(event.target.checked);
+                                        if (event.target.checked) setSelectedOrganizationId(undefined);
+                                        setPaymentError(undefined);
+                                      }}
+                                      className="mt-1 accent-[#2346DD]"
+                                    />
+                                    Voy a registrar una administración distinta
+                                  </label>
+                                </>
+                              )}
+                              {emailIsVerified && !account && (
+                                <p className="text-xs text-[#323159]/55" role="status">Preparando tu checkout…</p>
+                              )}
+                              {selectedExisting && (
+                                <p className="text-sm text-amber-900" role="status">
+                                  {selectedExisting.entitlement_state === "ACTIVE"
+                                    ? "Esta administración ya está activa. Gestioná el plan desde ELI Desk."
+                                    : "Esta administración requiere regularización. No iniciamos otro cobro."}
+                                </p>
+                              )}
+                              {account && accountEntries > 0 && !distinctAdministration && !selectedOrganizationId && (
+                                <p className="text-sm text-amber-900" role="status">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>
+                              )}
+                            </section>
+                            {checkoutConfiguration && !checkoutConfiguration.ready && (
+                              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">El checkout no está disponible en este entorno.</p>
+                            )}
+                            {!checkoutConfiguration && <p className="text-xs text-[#323159]/55" role="status">Preparando tu checkout…</p>}
                             {hasOpenedPayment && (
                               <>
+                                {checkoutConfiguration?.previewTest && (
+                                  <label className="mb-4 block text-sm text-[#323159]/80">
+                                    <span className="mb-1 block font-medium">Payment email TEST</span>
+                                    <input
+                                      type="email"
+                                      value={paymentEmailTest}
+                                      onChange={(event) => setPaymentEmailTest(event.target.value)}
+                                      className="w-full rounded-xl border border-[#323159]/20 bg-white px-3 py-2 text-[#323159] outline-none focus:border-[#2346DD]"
+                                      autoComplete="off"
+                                      aria-label="Payment email TEST"
+                                    />
+                                  </label>
+                                )}
                                 <MercadoPagoSubscriptionCheckout
                                   amount={
                                     process.env.NEXT_PUBLIC_MP_ENVIRONMENT === "test"
@@ -849,9 +1107,15 @@ export default function SignupWizard() {
                                       : data.plan === "professional" ? "155000" : "99999"
                                   }
                                   email={data.email}
-                                  disabled={!checkoutNonce}
+                                  disabled={!checkoutCanStart}
                                   onToken={createSubscription}
                                 />
+                                {!checkoutCanStart && checkoutConfiguration?.ready && selectedPending && !pendingCanStart && (
+                                  <p className="text-sm text-amber-900">Esta administración requiere revisión antes de iniciar el pago.</p>
+                                )}
+                                {!checkoutCanStart && checkoutConfiguration?.ready && account && accountEntries > 0 && !selectedOrganizationId && !distinctAdministration && (
+                                  <p className="text-sm text-amber-900">Seleccioná una administración o confirmá que vas a registrar una distinta.</p>
+                                )}
                                 {paymentError && <p className="text-sm text-red-600" aria-live="polite">{paymentError}</p>}
                               </>
                             )}
@@ -862,7 +1126,7 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 3 && (
+                {step === 4 && (
                   <StepShell
                     title={payment?.status === "rejected" ? "Pago rechazado" : "Estamos verificando el pago"}
                     subtitle="La pantalla no activa ELI: esperamos la confirmación server-side de Mercado Pago."
@@ -900,17 +1164,14 @@ export default function SignupWizard() {
                   </StepShell>
                 )}
 
-                {step === 4 && (
+                {step === 5 && (
                   <StepShell
-                    title="Todo listo!"
-                    subtitle="Bienvenido a ELI."
+                    title="All Set!"
                     eyebrow="REGISTRO ELI"
                     strongTitle
-                  >
-                    <p className="-mt-2 text-sm leading-relaxed text-[#74738E] sm:text-base lg:-mt-6">
-                      En breve te llegará un email con instrucciones.
-                    </p>
-                  </StepShell>
+                    oversizedTitle
+                    splitTitleWeight
+                  />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -920,21 +1181,29 @@ export default function SignupWizard() {
               onBack={back}
               onNext={() => next()}
               onDesk={openDesk}
-              hideNext={step === 2 || step === 3}
+              operationalReady={Boolean(payment?.operationalReady)}
+              hideNext={step === 3 || step === 4}
             />
 
-            <p
-              className={`${step === 2 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
-              aria-live="polite"
-            >
-              {deskNotice
-                ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
-                : step === 4
-                  ? "Suscripción activa confirmada por ELI."
+            {step !== 5 && (
+              <p
+                className={`${step === 3 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
+                aria-live="polite"
+              >
+                {deskNotice
+                  ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
                   : "No recargues la página mientras verificamos el estado."}
-            </p>
+              </p>
+            )}
+            {step === 5 && (
+              <p className="mt-2 text-right text-xs text-[#323159]/55" aria-live="polite">
+                {payment?.operationalReady
+                  ? "Suscripción activa confirmada por ELI."
+                  : "Pago aprobado; activación todavía pendiente."}
+              </p>
+            )}
           </div>
-          {step === 4 && (
+          {step === 5 && (
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 z-0 w-full overflow-hidden"
@@ -978,6 +1247,60 @@ export default function SignupWizard() {
           )}
         </section>
       </div>
+    </main>
+  );
+}
+
+function AuthLinkStatus({ state, onContinue }: { state: AuthLinkState; onContinue: () => void }) {
+  const alreadyActivated = state === "already-activated";
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
+      <section className="w-full max-w-xl rounded-[32px] bg-white p-7 text-center shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-12">
+        {alreadyActivated ? (
+          <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
+        ) : (
+          <Clock3 className="mx-auto h-12 w-12 text-[#2346DD]" aria-hidden="true" />
+        )}
+        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Verificación de email</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
+          {alreadyActivated ? "Tu cuenta ya está activada" : "Este enlace venció o ya fue utilizado"}
+        </h1>
+        <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
+          {alreadyActivated
+            ? "Podés continuar con tu alta desde el punto en que la dejaste."
+            : "Solicitá un nuevo enlace para continuar con tu alta de forma segura."}
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
+        >
+          {alreadyActivated ? "Continuar con mi alta" : "Solicitar un nuevo enlace"}
+          <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function ActivationWelcome({ plan }: { plan: PlanSlug }) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#E9EEFF] px-5 py-8 text-[#323159]">
+      <section className="w-full max-w-xl rounded-[32px] bg-white p-7 text-center shadow-[0_24px_80px_rgba(35,70,221,0.14)] sm:p-12">
+        <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
+        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#2346DD]">Cuenta activada</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">¡Tu cuenta fue activada!</h1>
+        <p className="mt-3 text-xl font-semibold text-[#323159]">Bienvenido/a a ELI</p>
+        <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[#323159]/65">
+          Tu email ya está confirmado. Completá los datos de tu primer consorcio para continuar.
+        </p>
+        <Link
+          href={`/onboarding?eli_activation_resume=1&plan=${plan}`}
+          className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[18px] bg-[#2346DD] px-6 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 sm:w-auto"
+        >
+          Continuar con mi primer consorcio <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
+        </Link>
+      </section>
     </main>
   );
 }
@@ -1098,7 +1421,7 @@ function EditorialPanel({ step }: { step: number }) {
             />
           </Link>
           <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
-            Paso {step + 1} de 5
+            Paso {step + 1} de 6
           </span>
         </div>
 
@@ -1214,13 +1537,19 @@ function StepShell({
   children,
   compact = false,
   strongTitle = false,
+  oversizedTitle = false,
+  splitTitleWeight = false,
+  lightSubtitle = false,
   eyebrow = "Registro ELI",
 }: {
   title: string;
-  subtitle: string;
-  children: ReactNode;
+  subtitle?: string;
+  children?: ReactNode;
   compact?: boolean;
   strongTitle?: boolean;
+  oversizedTitle?: boolean;
+  splitTitleWeight?: boolean;
+  lightSubtitle?: boolean;
   eyebrow?: string;
 }) {
   return (
@@ -1229,12 +1558,19 @@ function StepShell({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2346DD]">
           {eyebrow}
         </p>
-        <h2 className={`mt-2 ${strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold"} leading-tight tracking-[-0.045em] text-[#323159]`}>
-          {title}
+        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} ${splitTitleWeight ? "text-[#2346DD]" : "text-[#323159]"}`}>
+          {splitTitleWeight ? (
+            <>
+              <span className="font-extrabold">All</span>
+              <span className="font-thin"> Set!</span>
+            </>
+          ) : title}
         </h2>
-        <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${compact ? "sm:text-base" : "sm:text-lg"}`}>
-          {subtitle}
-        </p>
+        {subtitle && (
+          <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${lightSubtitle ? "font-light" : ""} ${compact ? "sm:text-base" : "sm:text-lg"}`}>
+            {subtitle}
+          </p>
+        )}
       </div>
       {children}
     </div>
@@ -1317,12 +1653,14 @@ function WizardNavigation({
   onBack,
   onNext,
   onDesk,
+  operationalReady,
   hideNext,
 }: {
   step: number;
   onBack: () => void;
   onNext: () => void;
   onDesk: () => void;
+  operationalReady: boolean;
   hideNext: boolean;
 }) {
   const nextLabels = [
@@ -1333,7 +1671,7 @@ function WizardNavigation({
   ];
 
   return (
-    <div className={`${step === 4 ? "relative z-30 mt-4 flex items-center justify-between gap-3 bg-transparent px-0 py-0" : "sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8"} lg:static lg:mx-0 ${step === 2 ? "lg:mt-3" : "lg:mt-10"} ${step === 4 ? "lg:relative lg:z-30" : ""} lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none`}>
+    <div className={`${step === 5 ? "relative z-30 mt-4 flex items-center justify-between gap-3 bg-transparent px-0 py-0" : "sticky bottom-0 z-20 -mx-5 mt-8 flex items-center justify-between gap-3 border-t border-[#323159]/8 bg-white/96 px-5 pb-1 pt-4 backdrop-blur sm:-mx-8 sm:px-8"} lg:static lg:mx-0 ${step === 3 ? "lg:mt-3" : "lg:mt-10"} ${step === 5 ? "lg:relative lg:z-30" : ""} lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none`}>
       {step === 0 ? (
         <Link
           href="/"
@@ -1363,7 +1701,7 @@ function WizardNavigation({
           {nextLabels[step]}
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
-      ) : step === steps.length - 1 ? (
+      ) : step === steps.length - 1 && operationalReady ? (
         <button
           type="button"
           onClick={onDesk}
