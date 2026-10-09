@@ -83,6 +83,7 @@ test("payment approval ends reconciliation polling without overlapping requests"
 
   assert.match(wizard, /startSequentialPolling\(async \(\) =>/);
   assert.match(wizard, /if \(result\.checkout\.paymentApproved\) \{\s*active = false;\s*navigate\(5, 1\);\s*return false;/);
+  assert.match(wizard, /if \(result\.checkout\.status === "rejected"\) \{\s*active = false;\s*return false;/);
   assert.match(polling, /timer = setTimeout\(\(\) => void poll\(\), intervalMs\)/);
   assert.doesNotMatch(wizard, /setInterval\(\(\) => void refresh\(\), 3000\)/);
 });

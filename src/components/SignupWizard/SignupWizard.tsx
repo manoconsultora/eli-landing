@@ -406,6 +406,10 @@ export default function SignupWizard() {
         navigate(5, 1);
         return false;
       }
+      if (result.checkout.status === "rejected") {
+        active = false;
+        return false;
+      }
       return true;
     }, 3000);
 
