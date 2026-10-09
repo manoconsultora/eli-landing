@@ -69,7 +69,10 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.match(source, /Solicitar un nuevo enlace/);
   assert.doesNotMatch(source, /function PlanSelection/);
   assert.match(source, /title="Elegí tu plan"/);
-  assert.match(source, /title="ALL SET"/);
+  assert.match(source, /title="ALL SET!"/);
+  assert.match(source, /splitTitleWeight/);
+  assert.match(source, /font-extrabold/);
+  assert.match(source, /font-thin/);
   assert.match(source, /Tu pago fue acreditado\./);
   assert.match(source, /El Setup de tu administración sigue pendiente/);
   assert.match(source, /lightSubtitle/);

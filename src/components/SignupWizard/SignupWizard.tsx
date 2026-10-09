@@ -1166,13 +1166,14 @@ export default function SignupWizard() {
 
                 {step === 5 && (
                   <StepShell
-                    title="ALL SET"
+                    title="ALL SET!"
                     subtitle={payment?.operationalReady
                       ? "Tu pago fue acreditado y tu administración está activa."
                       : "Tu pago fue acreditado."}
                     eyebrow="REGISTRO ELI"
                     strongTitle
                     oversizedTitle
+                    splitTitleWeight
                     lightSubtitle
                   >
                     <p className="-mt-2 text-base font-light leading-relaxed text-[#74738E] sm:text-lg lg:-mt-6">
@@ -1542,6 +1543,7 @@ function StepShell({
   compact = false,
   strongTitle = false,
   oversizedTitle = false,
+  splitTitleWeight = false,
   lightSubtitle = false,
   eyebrow = "Registro ELI",
 }: {
@@ -1551,6 +1553,7 @@ function StepShell({
   compact?: boolean;
   strongTitle?: boolean;
   oversizedTitle?: boolean;
+  splitTitleWeight?: boolean;
   lightSubtitle?: boolean;
   eyebrow?: string;
 }) {
@@ -1560,8 +1563,13 @@ function StepShell({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2346DD]">
           {eyebrow}
         </p>
-        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] font-black leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} text-[#323159]`}>
-          {title}
+        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} text-[#323159]`}>
+          {splitTitleWeight ? (
+            <>
+              <span className="font-extrabold">ALL</span>
+              <span className="font-thin"> SET!</span>
+            </>
+          ) : title}
         </h2>
         <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${lightSubtitle ? "font-light" : ""} ${compact ? "sm:text-base" : "sm:text-lg"}`}>
           {subtitle}
