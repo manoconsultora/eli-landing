@@ -85,6 +85,9 @@ export default function AllSetPreviewPage() {
           className="absolute bottom-0 left-0 h-[58vh] w-auto max-w-[72vw] object-contain object-bottom-left sm:h-[70vh]"
         />
       </div>
+      <p className="absolute bottom-4 right-5 z-10 text-right text-xs text-[#323159]/55 sm:right-10 lg:right-[8.5%]">
+        Pago aprobado; activación todavía pendiente.
+      </p>
     </main>
   );
 }

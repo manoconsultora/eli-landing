@@ -1195,6 +1195,13 @@ export default function SignupWizard() {
                   : "No recargues la página mientras verificamos el estado."}
               </p>
             )}
+            {step === 5 && (
+              <p className="mt-2 text-right text-xs text-[#323159]/55" aria-live="polite">
+                {payment?.operationalReady
+                  ? "Suscripción activa confirmada por ELI."
+                  : "Pago aprobado; activación todavía pendiente."}
+              </p>
+            )}
           </div>
           {step === 5 && (
             <div
