@@ -69,9 +69,22 @@ test("the initial wizard step has no authentication gate and card data is not st
   assert.match(source, /Solicitar un nuevo enlace/);
   assert.doesNotMatch(source, /function PlanSelection/);
   assert.match(source, /title="Elegí tu plan"/);
-  assert.match(source, /payment\?\.operationalReady \? "Todo listo!" : "Pago aprobado, activación pendiente"/);
+  assert.match(source, /title="ALL SET"/);
+  assert.match(source, /Tu pago fue acreditado\./);
+  assert.match(source, /El Setup de tu administración sigue pendiente/);
+  assert.match(source, /lightSubtitle/);
   assert.match(source, /step === steps\.length - 1 && operationalReady/);
   assert.doesNotMatch(source, /sessionStorage\.setItem\([^;]*cardToken/s);
+});
+
+test("payment approval ends reconciliation polling without overlapping requests", async () => {
+  const polling = await readFile(new URL("../src/components/SignupWizard/payment-polling.ts", import.meta.url), "utf8");
+  const wizard = await readFile(new URL("../src/components/SignupWizard/SignupWizard.tsx", import.meta.url), "utf8");
+
+  assert.match(wizard, /startSequentialPolling\(async \(\) =>/);
+  assert.match(wizard, /if \(result\.checkout\.paymentApproved\) \{\s*active = false;\s*navigate\(5, 1\);\s*return false;/);
+  assert.match(polling, /timer = setTimeout\(\(\) => void poll\(\), intervalMs\)/);
+  assert.doesNotMatch(wizard, /setInterval\(\(\) => void refresh\(\), 3000\)/);
 });
 
 test("checkout copy stays customer-facing while account validation remains silent", async () => {

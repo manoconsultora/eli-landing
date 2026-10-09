@@ -31,6 +31,7 @@ import {
 import { tiers } from "@/data/pricing";
 import MercadoPagoSubscriptionCheckout from "./MercadoPagoSubscriptionCheckout";
 import { buildCheckoutPayload } from "./checkout-payload";
+import { startSequentialPolling } from "./payment-polling";
 import {
   authReturnParam,
   authReturnStorageKey,
@@ -376,13 +377,14 @@ export default function SignupWizard() {
 
   useEffect(() => {
     if (step !== 4 || !paymentAttemptId || paymentApproved) return;
-    let cancelled = false;
     let cycle = 0;
-    const refresh = async () => {
+    let active = true;
+    const stopPolling = startSequentialPolling(async () => {
+      if (!active) return false;
       cycle += 1;
       const reconcile = cycle % 4 === 0;
       const authorization = await authorizationHeader();
-      if (!authorization) return;
+      if (!authorization || !active) return active;
       const response = await fetch(
         reconcile ? "/api/payments/reconcile" : `/api/payments/status?attempt=${paymentAttemptId}`,
         {
@@ -395,17 +397,21 @@ export default function SignupWizard() {
           cache: "no-store",
         },
       );
-      if (!response.ok || cancelled) return;
+      if (!response.ok || !active) return active;
       const result = (await response.json()) as { checkout?: PaymentSession };
-      if (!result.checkout) return;
+      if (!result.checkout || !active) return active;
       setPayment((current) => ({ ...result.checkout!, statusToken: current?.statusToken ?? paymentStatusToken }));
-      if (result.checkout.paymentApproved) navigate(5, 1);
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 3000);
+      if (result.checkout.paymentApproved) {
+        active = false;
+        navigate(5, 1);
+        return false;
+      }
+      return true;
+    }, 3000);
+
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      active = false;
+      stopPolling();
     };
   }, [authClient, authorizationHeader, paymentApproved, paymentAttemptId, paymentStatusToken, step]);
 
@@ -1156,15 +1162,19 @@ export default function SignupWizard() {
 
                 {step === 5 && (
                   <StepShell
-                    title={payment?.operationalReady ? "Todo listo!" : "Pago aprobado, activación pendiente"}
-                    subtitle={payment?.operationalReady ? "Bienvenido a ELI." : "ELI confirmó el pago. La administración todavía no está habilitada."}
+                    title="ALL SET"
+                    subtitle={payment?.operationalReady
+                      ? "Tu pago fue acreditado y tu administración está activa."
+                      : "Tu pago fue acreditado."}
                     eyebrow="REGISTRO ELI"
                     strongTitle
+                    oversizedTitle
+                    lightSubtitle
                   >
-                    <p className="-mt-2 text-sm leading-relaxed text-[#74738E] sm:text-base lg:-mt-6">
+                    <p className="-mt-2 text-base font-light leading-relaxed text-[#74738E] sm:text-lg lg:-mt-6">
                       {payment?.operationalReady
-                        ? "El pago y la activación están confirmados. Ya podés ingresar a ELI Desk."
-                        : "Te avisaremos cuando termine la activación. El acceso a ELI Desk aparecerá cuando la administración esté lista."}
+                        ? "Bienvenido a ELI. Ya podés ingresar a ELI Desk."
+                        : "El Setup de tu administración sigue pendiente. ELI Desk estará disponible cuando se complete."}
                     </p>
                   </StepShell>
                 )}
@@ -1527,6 +1537,8 @@ function StepShell({
   children,
   compact = false,
   strongTitle = false,
+  oversizedTitle = false,
+  lightSubtitle = false,
   eyebrow = "Registro ELI",
 }: {
   title: string;
@@ -1534,6 +1546,8 @@ function StepShell({
   children: ReactNode;
   compact?: boolean;
   strongTitle?: boolean;
+  oversizedTitle?: boolean;
+  lightSubtitle?: boolean;
   eyebrow?: string;
 }) {
   return (
@@ -1542,10 +1556,10 @@ function StepShell({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2346DD]">
           {eyebrow}
         </p>
-        <h2 className={`mt-2 ${strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold"} leading-tight tracking-[-0.045em] text-[#323159]`}>
+        <h2 className={`mt-2 ${oversizedTitle ? "text-[clamp(4rem,13vw,9rem)] font-black leading-[0.88] tracking-[-0.08em]" : strongTitle ? "text-[clamp(2.2rem,4.4vw,3rem)] font-black leading-tight tracking-[-0.045em]" : "text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.045em]"} text-[#323159]`}>
           {title}
         </h2>
-        <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${compact ? "sm:text-base" : "sm:text-lg"}`}>
+        <p className={`mt-2 max-w-[580px] text-base leading-relaxed text-[#323159]/58 ${lightSubtitle ? "font-light" : ""} ${compact ? "sm:text-base" : "sm:text-lg"}`}>
           {subtitle}
         </p>
       </div>
