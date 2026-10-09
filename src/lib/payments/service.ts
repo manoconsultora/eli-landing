@@ -531,8 +531,11 @@ export async function reconcileProviderState(input: {
     p_provider_payment_status_detail: input.payment?.status_detail ?? null,
     p_amount: input.payment?.transaction_amount ?? null,
     p_currency: input.payment?.currency_id ?? null,
-    p_period_start: input.subscription.auto_recurring?.start_date ?? null,
-    p_period_end: input.subscription.auto_recurring?.end_date ?? null,
+    p_period_start:
+      input.payment?.date_approved ??
+      input.subscription.auto_recurring?.start_date ??
+      null,
+    p_period_end: null,
     p_provider_snapshot: {
       subscriptionStatus: input.subscription.status,
       paymentStatus: input.payment?.status ?? null,
