@@ -881,10 +881,10 @@ export default function SignupWizard() {
                           aria-labelledby="property-type-heading"
                         >
                           {[
-                            { value: "building" as const, label: "Edificio", symbol: "🏢", disabled: false },
-                            { label: "Barrio privado", symbol: "🏘️", disabled: true },
-                            { label: "Housing", symbol: "🏙️", disabled: true },
-                            { label: "Complejo de cabañas", symbol: "🏕️", disabled: true },
+                            { value: "building" as const, label: "Edificio", image: "/property-building.webp", disabled: false },
+                            { label: "Barrio privado", image: "/property-private-neighborhood.webp", disabled: true },
+                            { label: "Housing", image: "/property-housing.webp", disabled: true },
+                            { label: "Complejo de cabañas", image: "/property-cabins.webp", disabled: true },
                           ].map((property) => {
                             const selected = property.value === selectedPropertyType;
                             return (
@@ -907,9 +907,15 @@ export default function SignupWizard() {
                               >
                                 <span
                                   aria-hidden="true"
-                                  className={`flex h-11 w-11 items-center justify-center rounded-[16px] text-2xl ${selected ? "bg-[#2346DD]" : "bg-[#E9EEFF]"}`}
+                                  className={`relative flex h-[84px] w-full items-center justify-center overflow-hidden rounded-[18px] ${selected ? "bg-[#E9EEFF]" : "bg-[#F4F6FF]"} sm:h-[96px]`}
                                 >
-                                  {property.symbol}
+                                  <Image
+                                    src={property.image}
+                                    alt=""
+                                    fill
+                                    sizes="(min-width: 1024px) 18vw, (min-width: 640px) 30vw, 42vw"
+                                    className="object-contain p-1"
+                                  />
                                 </span>
                                 <span className="flex w-full items-end justify-between gap-2">
                                   <span className={`text-sm font-semibold ${selected ? "text-[#2346DD]" : "text-[#323159]"}`}>
