@@ -58,6 +58,7 @@ const steps = [
 
 type PlanSlug = "core" | "professional";
 type AuthLinkState = "already-activated" | "expired";
+type PropertyTypeView = "select" | "form";
 
 const initialData: WizardData = {
   administrationName: "",
@@ -117,6 +118,8 @@ export default function SignupWizard() {
     plan: requestedPlan === "professional" ? "professional" : "core",
   }));
   const [attempted, setAttempted] = useState(false);
+  const [propertyTypeView, setPropertyTypeView] = useState<PropertyTypeView>("select");
+  const [selectedPropertyType, setSelectedPropertyType] = useState<"building" | null>(null);
   const [deskNotice, setDeskNotice] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [checkoutNonce, setCheckoutNonce] = useState("");
@@ -566,12 +569,23 @@ export default function SignupWizard() {
 
   function next(event?: FormEvent) {
     event?.preventDefault();
+    if (step === 2 && propertyTypeView === "select") {
+      if (selectedPropertyType !== "building") return;
+      setPropertyTypeView("form");
+      setAttempted(false);
+      return;
+    }
     setAttempted(true);
     if (!stepValid || step >= steps.length - 1) return;
     navigate(step + 1, 1);
   }
 
   function back() {
+    if (step === 2 && propertyTypeView === "form") {
+      setPropertyTypeView("select");
+      setAttempted(false);
+      return;
+    }
     if (step === 0) return;
     window.history.back();
   }
@@ -851,54 +865,130 @@ export default function SignupWizard() {
                     title="Primer consorcio"
                     subtitle="Arrancamos por el primero."
                   >
-                    <form
-                      id="signup-step-form"
-                      className="grid gap-5 sm:grid-cols-2"
-                      onSubmit={next}
-                    >
-                      <Field
-                        id="building-name"
-                        label="Nombre o referencia"
-                        value={data.buildingName}
-                        onChange={(value) => update("buildingName", value)}
-                        placeholder="Ej. Ugarte 2200"
-                        className="sm:col-span-2"
-                        error={
-                          attempted && !data.buildingName.trim()
-                            ? "Dale un nombre para reconocerlo."
-                            : undefined
-                        }
-                      />
-                      <Field
-                        id="building-address"
-                        label="Dirección"
-                        value={data.address}
-                        onChange={(value) => update("address", value)}
-                        placeholder="Calle, número y localidad"
-                        autoComplete="street-address"
-                        error={
-                          attempted && !data.address.trim()
-                            ? "Ingresá la dirección."
-                            : undefined
-                        }
-                      />
-                      <Field
-                        id="building-units"
-                        label="Cantidad de unidades"
-                        type="number"
-                        min="1"
-                        max="9999"
-                        inputMode="numeric"
-                        value={data.units}
-                        onChange={(value) => update("units", value)}
-                        placeholder="Ej. 48"
-                        error={
-                          attempted && Number(data.units) <= 0
-                            ? "Ingresá al menos una unidad."
-                            : undefined
-                        }
-                      />
-                    </form>
+                    {propertyTypeView === "select" ? (
+                      <div className="grid gap-5">
+                        <div>
+                          <h3 id="property-type-heading" className="text-xl font-semibold tracking-[-0.03em] text-[#323159] sm:text-2xl">
+                            ¿Qué tipo de propiedad administrás?
+                          </h3>
+                          <p className="mt-1.5 text-sm leading-relaxed text-[#323159]/60">
+                            Seleccioná la opción que mejor describa el consorcio.
+                          </p>
+                        </div>
+                        <div
+                          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+                          role="radiogroup"
+                          aria-labelledby="property-type-heading"
+                        >
+                          {[
+                            { value: "building" as const, label: "Edificio", image: "/property-building.webp", disabled: false },
+                            { label: "Barrio privado", image: "/property-private-neighborhood.webp", disabled: true },
+                            { label: "Housing", image: "/property-housing.webp", disabled: true },
+                            { label: "Complejo de cabañas", image: "/property-cabins.webp", disabled: true },
+                          ].map((property) => {
+                            const selected = property.value === selectedPropertyType;
+                            return (
+                              <button
+                                key={property.label}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                disabled={property.disabled}
+                                onClick={() => {
+                                  if (property.value) setSelectedPropertyType(property.value);
+                                }}
+                                className={`group relative flex min-h-[154px] flex-col items-start justify-between rounded-[24px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/20 sm:min-h-[172px] sm:p-5 ${
+                                  selected
+                                    ? "border-[#2346DD] bg-[#EEF2FF] shadow-[0_12px_28px_rgba(35,70,221,0.12)]"
+                                    : property.disabled
+                                      ? "cursor-not-allowed border-[#323159]/8 bg-[#F7F8FC] opacity-55"
+                                      : "border-[#323159]/10 bg-white hover:-translate-y-0.5 hover:border-[#2346DD]/35 hover:bg-[#F8F9FF] motion-reduce:transform-none"
+                                }`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`relative flex h-[84px] w-full items-center justify-center overflow-hidden rounded-[18px] ${property.disabled ? "bg-[#F4F6FF]" : "bg-transparent"} sm:h-[96px]`}
+                                >
+                                  <Image
+                                    src={property.image}
+                                    alt=""
+                                    fill
+                                    sizes="(min-width: 1024px) 18vw, (min-width: 640px) 30vw, 42vw"
+                                    className="object-contain p-1"
+                                  />
+                                </span>
+                                <span className="flex w-full items-end justify-between gap-2">
+                                  <span className={`text-sm font-semibold ${selected ? "text-[#2346DD]" : "text-[#323159]"}`}>
+                                    {property.label}
+                                  </span>
+                                  {property.disabled ? (
+                                    <span className="rounded-full bg-[#323159]/10 px-2 py-1 text-[10px] font-bold tracking-[0.12em] text-[#323159]/55">
+                                      SOON
+                                    </span>
+                                  ) : (
+                                    <span
+                                      aria-hidden="true"
+                                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${selected ? "border-[#2346DD] bg-[#2346DD]" : "border-[#323159]/20 bg-white"}`}
+                                    >
+                                      {selected && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <form
+                        id="signup-step-form"
+                        className="grid gap-5 sm:grid-cols-2"
+                        onSubmit={next}
+                      >
+                        <Field
+                          id="building-name"
+                          label="Nombre o referencia"
+                          value={data.buildingName}
+                          onChange={(value) => update("buildingName", value)}
+                          placeholder="Ej. Ugarte 2200"
+                          className="sm:col-span-2"
+                          error={
+                            attempted && !data.buildingName.trim()
+                              ? "Dale un nombre para reconocerlo."
+                              : undefined
+                          }
+                        />
+                        <Field
+                          id="building-address"
+                          label="Dirección"
+                          value={data.address}
+                          onChange={(value) => update("address", value)}
+                          placeholder="Calle, número y localidad"
+                          autoComplete="street-address"
+                          error={
+                            attempted && !data.address.trim()
+                              ? "Ingresá la dirección."
+                              : undefined
+                          }
+                        />
+                        <Field
+                          id="building-units"
+                          label="Cantidad de unidades"
+                          type="number"
+                          min="1"
+                          max="9999"
+                          inputMode="numeric"
+                          value={data.units}
+                          onChange={(value) => update("units", value)}
+                          placeholder="Ej. 48"
+                          error={
+                            attempted && Number(data.units) <= 0
+                              ? "Ingresá al menos una unidad."
+                              : undefined
+                          }
+                        />
+                      </form>
+                    )}
                   </StepShell>
                 )}
 
@@ -1183,6 +1273,7 @@ export default function SignupWizard() {
               onDesk={openDesk}
               operationalReady={Boolean(payment?.operationalReady)}
               hideNext={step === 3 || step === 4}
+              nextDisabled={step === 2 && propertyTypeView === "select" && selectedPropertyType !== "building"}
             />
 
             {step !== 5 && (
@@ -1655,6 +1746,7 @@ function WizardNavigation({
   onDesk,
   operationalReady,
   hideNext,
+  nextDisabled = false,
 }: {
   step: number;
   onBack: () => void;
@@ -1662,6 +1754,7 @@ function WizardNavigation({
   onDesk: () => void;
   operationalReady: boolean;
   hideNext: boolean;
+  nextDisabled?: boolean;
 }) {
   const nextLabels = [
     "Continuar",
@@ -1696,7 +1789,8 @@ function WizardNavigation({
           type={step <= 1 ? "submit" : "button"}
           form={step <= 1 ? "signup-step-form" : undefined}
           onClick={step <= 1 ? undefined : onNext}
-          className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[18px] bg-[#2346DD] px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:-translate-y-0.5 hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 motion-reduce:transform-none sm:px-7"
+          disabled={nextDisabled}
+          className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[18px] bg-[#2346DD] px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:-translate-y-0.5 hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:bg-[#2346DD] motion-reduce:transform-none sm:px-7"
         >
           {nextLabels[step]}
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
