@@ -907,7 +907,7 @@ export default function SignupWizard() {
                               >
                                 <span
                                   aria-hidden="true"
-                                  className={`relative flex h-[84px] w-full items-center justify-center overflow-hidden rounded-[18px] ${selected ? "bg-[#E9EEFF]" : "bg-[#F4F6FF]"} sm:h-[96px]`}
+                                  className={`relative flex h-[84px] w-full items-center justify-center overflow-hidden rounded-[18px] ${selected ? "bg-transparent" : "bg-[#F4F6FF]"} sm:h-[96px]`}
                                 >
                                   <Image
                                     src={property.image}
