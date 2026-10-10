@@ -883,7 +883,7 @@ export default function SignupWizard() {
                           {[
                             { value: "building" as const, label: "Edificio", symbol: "🏢", disabled: false },
                             { label: "Barrio privado", symbol: "🏘️", disabled: true },
-                            { label: "Condominio", symbol: "🏙️", disabled: true },
+                            { label: "Housing", symbol: "🏙️", disabled: true },
                             { label: "Complejo de cabañas", symbol: "🏕️", disabled: true },
                           ].map((property) => {
                             const selected = property.value === selectedPropertyType;
