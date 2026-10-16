@@ -6,6 +6,7 @@ import {
   parseCheckoutInput,
   PaymentsError,
 } from "@/lib/payments/service";
+import { receivePlatformOnboardingIntake } from "@/lib/platform-onboarding/intake";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +42,24 @@ export async function POST(request: NextRequest) {
     if (rawBody.length > MAX_BODY_LENGTH) {
       return NextResponse.json({ ok: false, code: "payload_too_large" }, { status: 413 });
     }
-    const checkout = await beginCheckout(parseCheckoutInput(JSON.parse(rawBody)), bearerToken(request));
+    const input = parseCheckoutInput(JSON.parse(rawBody));
+    const token = bearerToken(request);
+    const checkout = await beginCheckout(input, token);
+    const paymentStatus = checkout.paymentApproved
+      ? "approved"
+      : checkout.status === "rejected"
+        ? "rejected"
+        : checkout.status === "failed"
+          ? "failed"
+          : "pending";
+    await receivePlatformOnboardingIntake({
+      checkoutNonce: input.checkoutNonce,
+      administrationName: input.administrationName,
+      responsibleName: input.responsibleName,
+      requestedPlanCode: input.offerId,
+      onboardingProgress: "checkout_started",
+      paymentStatus,
+    }, token);
     return NextResponse.json({ ok: true, checkout }, { status: checkout.active ? 201 : 202 });
   } catch (error) {
     if (error instanceof PaymentsError) {
@@ -50,6 +68,16 @@ export async function POST(request: NextRequest) {
         { status: error.httpStatus },
       );
     }
+    const code = error && typeof error === "object" && "code" in error
+      && (typeof error.code === "string" || typeof error.code === "number")
+      ? error.code
+      : undefined;
+    console.error("checkout_unavailable", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Non-Error thrown",
+      stack: error instanceof Error ? error.stack : undefined,
+      ...(code !== undefined ? { code } : {}),
+    });
     return NextResponse.json(
       {
         ok: false,
