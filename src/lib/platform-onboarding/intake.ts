@@ -9,6 +9,7 @@ type IntakeInput = {
   requestedPlanCode: "core" | "professional";
   onboardingProgress?: "setup_in_progress" | "checkout_started";
   paymentStatus?: "not_started" | "pending" | "approved" | "rejected" | "failed";
+  paymentAttemptId?: string;
 };
 
 type AuthUser = {
@@ -28,6 +29,9 @@ export async function receivePlatformOnboardingIntake(
   accessToken: string,
 ) {
   if (!UUID_PATTERN.test(input.checkoutNonce)) throw new Error("invalid_intake_key");
+  if (input.paymentAttemptId !== undefined && !UUID_PATTERN.test(input.paymentAttemptId)) {
+    throw new Error("invalid_payment_attempt_id");
+  }
   const supabaseUrl = required("SUPABASE_URL").replace(/\/$/, "");
   const anonKey = required("NEXT_PUBLIC_SUPABASE_ANON_KEY");
   const serviceRoleKey = required("SUPABASE_SERVICE_ROLE_KEY");
@@ -75,6 +79,29 @@ export async function receivePlatformOnboardingIntake(
   const caseId = (await response.json()) as unknown;
   if (typeof caseId !== "string" || !UUID_PATTERN.test(caseId)) {
     throw new Error("intake_response_invalid");
+  }
+
+  // Link the case to the organization of this checkout's attempt, so the
+  // Platform Owner case shows it. Same key and user as the intake; never email.
+  if (input.paymentAttemptId) {
+    const bindResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/platform_onboarding_bind_landing_case`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        p_idempotency_key: key,
+        p_source_user_id: user.id,
+        p_payment_attempt_id: input.paymentAttemptId,
+      }),
+    });
+    if (!bindResponse.ok) {
+      const requestId = bindResponse.headers.get("x-request-id") ?? "unknown";
+      throw new Error(`intake_case_binding_unavailable:${bindResponse.status}:${requestId}`);
+    }
   }
   return { caseId, contactEmail: user.email.trim().toLowerCase() };
 }

@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
       requestedPlanCode: input.offerId,
       onboardingProgress: "checkout_started",
       paymentStatus,
+      paymentAttemptId: checkout.attemptId,
     }, token);
     return NextResponse.json({ ok: true, checkout }, { status: checkout.active ? 201 : 202 });
   } catch (error) {
