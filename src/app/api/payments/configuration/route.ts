@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isPreviewTestEnvironment } from "@/lib/payments/config";
+import { isTestPaymentEnvironment } from "@/lib/payments/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +51,10 @@ export async function GET() {
     {
       ready: missing.length === 0,
       missing,
-      previewTest: isPreviewTestEnvironment(providerEnvironment),
+      previewTest: isTestPaymentEnvironment(providerEnvironment),
+      providerMode,
+      providerEnvironment,
+      localStub: providerMode === "stub" && process.env.NODE_ENV !== "production",
     },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );

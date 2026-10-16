@@ -60,6 +60,7 @@ async function safeProviderDetails(response: Response, secrets: string[]) {
 export type MercadoPagoSubscription = {
   id: string;
   status: string;
+  next_payment_date?: string;
   external_reference?: string;
   preapproval_plan_id?: string;
   init_point?: string;

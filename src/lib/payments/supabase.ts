@@ -49,7 +49,7 @@ function authenticatedConfiguration() {
   return { serverUrl, anonKey };
 }
 
-export async function verifiedAuthEmail(accessToken: string) {
+export async function verifiedAuthUser(accessToken: string) {
   if (!accessToken || accessToken.length > 4096 || /\s/.test(accessToken)) return null;
   const { serverUrl, anonKey } = authenticatedConfiguration();
   const response = await fetch(`${serverUrl}/auth/v1/user`, {
@@ -63,7 +63,11 @@ export async function verifiedAuthEmail(accessToken: string) {
     email_confirmed_at?: string | null;
   };
   if (!user.id || !user.email_confirmed_at || !user.email) return null;
-  return user.email.trim().toLowerCase();
+  return { id: user.id, email: user.email.trim().toLowerCase() };
+}
+
+export async function verifiedAuthEmail(accessToken: string) {
+  return (await verifiedAuthUser(accessToken))?.email ?? null;
 }
 
 export async function authenticatedRpc<T>(

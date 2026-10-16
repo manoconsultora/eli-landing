@@ -14,6 +14,17 @@ export function isPreviewTestEnvironment(providerEnvironment = process.env.MP_EN
   return process.env.VERCEL_ENV === "preview" && providerEnvironment === "test";
 }
 
+export function isTestPaymentEnvironment(providerEnvironment = process.env.MP_ENVIRONMENT) {
+  if (isPreviewTestEnvironment(providerEnvironment)) return true;
+  if (providerEnvironment !== "test" || process.env.NODE_ENV !== "development") return false;
+  try {
+    const urls = [process.env.SUPABASE_URL, process.env.ELI_PUBLIC_BASE_URL];
+    return urls.every((value) => value && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(value).hostname));
+  } catch {
+    return false;
+  }
+}
+
 function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`missing_server_configuration:${name}`);

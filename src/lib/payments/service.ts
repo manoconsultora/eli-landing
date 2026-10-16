@@ -1,4 +1,4 @@
-import { isPreviewTestEnvironment, paymentsConfig } from "./config";
+import { isTestPaymentEnvironment, paymentsConfig } from "./config";
 import {
   hmac,
   matchesMercadoPagoSubscriptionBinding,
@@ -16,6 +16,7 @@ import {
   type MercadoPagoSubscription,
 } from "./mercadopago";
 import { authenticatedRpc, databaseRequest, queryValue, rpc, verifiedAuthEmail } from "./supabase";
+import { buildStubReconciliation } from "./stub-checkout";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CARD_TOKEN_REGEX = /^[A-Za-z0-9_-]{8,512}$/;
@@ -77,6 +78,7 @@ type CheckoutRow = {
 };
 
 type AttemptRow = {
+  created_at: string;
   id: string;
   organization_id: string;
   external_reference: string;
@@ -165,7 +167,7 @@ export function parseCheckoutInput(value: unknown): CheckoutInput {
       "Revisá los datos del checkout e intentá nuevamente.",
     );
   }
-  if (paymentEmailTest && !isPreviewTestEnvironment()) {
+  if (paymentEmailTest && !isTestPaymentEnvironment()) {
     throw new PaymentsError(
       "payment_email_override_forbidden",
       400,
@@ -207,7 +209,7 @@ export async function inspectAuthenticatedCheckout(accessToken: string) {
 }
 
 export async function beginCheckout(input: CheckoutInput, accessToken: string) {
-  if (input.paymentEmailTest && !isPreviewTestEnvironment()) {
+  if (input.paymentEmailTest && !isTestPaymentEnvironment()) {
     throw new PaymentsError(
       "payment_email_override_forbidden",
       400,
@@ -259,6 +261,10 @@ export async function beginCheckout(input: CheckoutInput, accessToken: string) {
     if (attempt.organization_id !== decision.organization_id) {
       throw new PaymentsError("checkout_binding_mismatch", 409, "No pudimos reanudar este pago.");
     }
+    if (config.providerMode === "stub" && attempt.status === "provider_pending") {
+      await reconcileProviderState({ ...buildStubReconciliation(attempt, input.cardToken), actor: "reconciliation" });
+      return presentAttempt(await getAttemptById(attempt.id));
+    }
     return presentAttempt(attempt);
   }
   if (decision.decision === "selection_required") {
@@ -283,6 +289,10 @@ export async function beginCheckout(input: CheckoutInput, accessToken: string) {
     ? await getAttemptById(checkout.attempt_id)
     : await getAttempt(checkout.attempt_id, statusToken);
   if (checkout.reused && current.provider_subscription_id) {
+    if (config.providerMode === "stub" && current.status === "provider_pending") {
+      await reconcileProviderState({ ...buildStubReconciliation(current, input.cardToken), actor: "reconciliation" });
+      return presentAttempt(await getAttemptById(current.id));
+    }
     return presentAttempt(current);
   }
 
@@ -363,18 +373,8 @@ export async function beginCheckout(input: CheckoutInput, accessToken: string) {
 
   if (config.providerMode === "stub") {
     await reconcileProviderState({
-      externalReference: checkout.external_reference,
-      subscription: preapproval,
-      payment: {
-        id: `stub-payment-${checkout.attempt_id}`,
-        status: input.cardToken.includes("rejected") ? "rejected" : "approved",
-        status_detail: input.cardToken.includes("rejected") ? "cc_rejected_other_reason" : "accredited",
-        external_reference: checkout.external_reference,
-        transaction_amount: Number(checkout.amount),
-        currency_id: checkout.currency,
-      },
+      ...buildStubReconciliation(await getAttemptById(checkout.attempt_id), input.cardToken),
       actor: "reconciliation",
-      correlationId: `stub:${checkout.attempt_id}`,
     });
   }
 
@@ -395,7 +395,7 @@ export async function getAttempt(attemptId: string, statusToken: string) {
 }
 
 const attemptSelect =
-  "id,organization_id,external_reference,payer_email,amount,currency,status," +
+  "id,created_at,organization_id,external_reference,payer_email,amount,currency,status," +
   "provider_subscription_id,provider_status,failure_code,updated_at," +
   "organizations!payment_attempts_organization_id_fkey(status)," +
   "onboarding_sessions!payment_attempts_onboarding_session_id_fkey(status)," +
@@ -458,6 +458,8 @@ export function presentAttempt(attempt: AttemptRow, statusToken?: string) {
   );
   return {
     attemptId: attempt.id,
+    organizationId: attempt.organization_id,
+    organizationStatus: organization?.status ?? null,
     ...(statusToken ? { statusToken } : {}),
     status: attempt.status,
     providerStatus: attempt.provider_status,
@@ -535,7 +537,7 @@ export async function reconcileProviderState(input: {
       input.payment?.date_approved ??
       input.subscription.auto_recurring?.start_date ??
       null,
-    p_period_end: null,
+    p_period_end: input.subscription.next_payment_date ?? input.subscription.auto_recurring?.end_date ?? null,
     p_provider_snapshot: {
       subscriptionStatus: input.subscription.status,
       paymentStatus: input.payment?.status ?? null,

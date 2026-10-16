@@ -118,6 +118,8 @@ export default function SignupWizard() {
   }));
   const [attempted, setAttempted] = useState(false);
   const [deskNotice, setDeskNotice] = useState(false);
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [deskNeedsAuth, setDeskNeedsAuth] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [checkoutNonce, setCheckoutNonce] = useState("");
   const [step3View, setStep3View] = useState<"review" | "payment">("review");
@@ -127,6 +129,9 @@ export default function SignupWizard() {
   const step3PaymentContentRef = useRef<HTMLDivElement>(null);
   const [payment, setPayment] = useState<PaymentSession>();
   const [paymentError, setPaymentError] = useState<string>();
+  const [intakeError, setIntakeError] = useState<string>();
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const [intakeNeedsAuth, setIntakeNeedsAuth] = useState(false);
   const [authClient, setAuthClient] = useState<SupabaseClient>();
   const authClientRef = useRef<SupabaseClient | null>(null);
   const authRestoreRef = useRef<Promise<{
@@ -134,6 +139,7 @@ export default function SignupWizard() {
     account?: AccountInspection;
     notice?: string;
     activatedViaCallback?: boolean;
+    checkout?: PaymentSession;
     authCallbackError?: boolean;
   }> | null>(null);
   const callbackReturnRef = useRef(false);
@@ -149,11 +155,14 @@ export default function SignupWizard() {
   const [distinctAdministration, setDistinctAdministration] = useState(false);
   const [signInNotice, setSignInNotice] = useState<string>();
   const [signInBusy, setSignInBusy] = useState(false);
+  const [signInSent, setSignInSent] = useState(false);
   const [authConfigurationReady, setAuthConfigurationReady] = useState(false);
+  const [authRestored, setAuthRestored] = useState(false);
   const [checkoutConfiguration, setCheckoutConfiguration] = useState<{
     ready: boolean;
     missing: string[];
     previewTest: boolean;
+    localStub?: boolean;
   }>();
   const [paymentEmailTest, setPaymentEmailTest] = useState(defaultTestPaymentEmail);
   const paymentAttemptId = payment?.attemptId;
@@ -185,6 +194,8 @@ export default function SignupWizard() {
       let notice: string | undefined;
       const callbackUrl = new URL(window.location.href);
       const code = callbackUrl.searchParams.get("code");
+      const resumeAttemptId = callbackUrl.searchParams.get("eli_paid_attempt");
+      callbackUrl.searchParams.delete("eli_paid_attempt");
       const authCallbackError = hasAuthCallbackError(callbackUrl);
       callbackReturnRef.current = Boolean(code || authCallbackError);
       if (code) {
@@ -200,6 +211,18 @@ export default function SignupWizard() {
       const { data: sessionData } = await client.auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) return { email, notice, authCallbackError };
+      if (resumeAttemptId && /^[0-9a-f-]{36}$/i.test(resumeAttemptId)) {
+        const statusResponse = await fetch(`/api/payments/status?attempt=${encodeURIComponent(resumeAttemptId)}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        if (statusResponse.ok) {
+          const statusResult = await statusResponse.json() as { checkout?: PaymentSession };
+          if (statusResult.checkout?.attemptId === resumeAttemptId && statusResult.checkout.paymentApproved && statusResult.checkout.entitlementState === "ACTIVE") {
+            return { email, checkout: statusResult.checkout, notice, authCallbackError };
+          }
+        }
+        notice = "No pudimos recuperar el estado del pago existente. No inicies otro pago.";
+      }
       const response = await fetch("/api/payments/checkout", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -217,15 +240,24 @@ export default function SignupWizard() {
     })();
     void authRestoreRef.current.then((result) => {
       if (cancelled) return;
+      setAuthRestored(true);
       if (result.notice) setSignInNotice(result.notice);
       if (result.email) {
         setVerifiedEmail(result.email);
         setData((current) => ({ ...current, email: result.email! }));
+      } else if (resumeToConsortium) {
+        setIntakeNeedsAuth(true);
+        setIntakeError("Tu sesión venció. Verificá tu email nuevamente para continuar; los datos que cargaste se conservan.");
       }
       if (result.authCallbackError) {
         setAuthLinkState(result.email ? "already-activated" : "expired");
       }
-      if (result.activatedViaCallback) setPostActivation(true);
+      if (result.checkout) {
+        setPayment(result.checkout);
+        setPostActivation(false);
+        setDeskNeedsAuth(false);
+        setStep(5);
+      } else if (result.activatedViaCallback) setPostActivation(true);
       if (!result.account) return;
       setAccount(result.account);
       if (result.account.pending.length + result.account.organizations.length === 1) {
@@ -234,7 +266,10 @@ export default function SignupWizard() {
         );
       }
     }).catch(() => {
-      if (!cancelled) setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+      if (!cancelled) {
+        setAuthRestored(true);
+        setSignInNotice("No pudimos completar el ingreso. Solicitá un enlace nuevo.");
+      }
     });
     return () => { cancelled = true; };
   }, []);
@@ -328,7 +363,9 @@ export default function SignupWizard() {
         parsed.step >= 0 &&
         parsed.step < steps.length
       ) {
-        setStep(resumeToConsortium ? 2 : parsed.step > 3 && !parsed.payment ? 2 : parsed.step);
+        const savedStep = parsed.step > 3 && !parsed.payment ? 2 : parsed.step;
+        setStep(parsed.payment?.paymentApproved && parsed.payment.entitlementState === "ACTIVE"
+          ? 5 : resumeToConsortium ? Math.max(2, savedStep) : savedStep);
       }
     } catch {
       window.sessionStorage.removeItem(storageKey);
@@ -376,13 +413,20 @@ export default function SignupWizard() {
   }, [checkoutNonce, data, hydrated, payment, step, step3View]);
 
   useEffect(() => {
+    if (hydrated && authRestored && payment?.paymentApproved && !verifiedEmail) {
+      setDeskNeedsAuth(true);
+      setDeskNotice(true);
+    }
+  }, [hydrated, authRestored, payment?.paymentApproved, verifiedEmail]);
+
+  useEffect(() => {
     if (step !== 4 || !paymentAttemptId || paymentApproved) return;
     let cycle = 0;
     let active = true;
     const stopPolling = startSequentialPolling(async () => {
       if (!active) return false;
       cycle += 1;
-      const reconcile = cycle % 4 === 0;
+      const reconcile = cycle === 1 || cycle % 2 === 0;
       const authorization = await authorizationHeader();
       if (!authorization || !active) return active;
       const response = await fetch(
@@ -411,7 +455,7 @@ export default function SignupWizard() {
         return false;
       }
       return true;
-    }, 3000);
+    }, 1500);
 
     return () => {
       active = false;
@@ -519,6 +563,7 @@ export default function SignupWizard() {
       setSelectedOrganizationId(undefined);
       setDistinctAdministration(false);
       setSignInNotice(undefined);
+      setSignInSent(false);
     }
   }
 
@@ -539,10 +584,74 @@ export default function SignupWizard() {
     );
   }
 
-  function continueToPayment() {
+  async function submitPlatformIntake(onboardingProgress: "setup_in_progress" | "checkout_started" = "setup_in_progress") {
+    const authorization = await authorizationHeader();
+    // Intake records progress before account selection, which happens at checkout.
+    // Payment creation keeps its separate account/organization eligibility checks.
+    if (!authorization) throw new Error("authentication_required");
+    if (!emailIsVerified) throw new Error("verified_email_required");
+    if (!administrationNamesReady) throw new Error("initial_data_required");
+    const response = await fetch("/api/onboarding/intake", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: authorization },
+      body: JSON.stringify({
+        checkoutNonce,
+        administrationName: data.administrationName,
+        responsibleName: data.responsibleName,
+        requestedPlanCode: data.plan,
+        onboardingProgress,
+      }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({})) as { code?: string };
+      throw new Error(failure.code === "authentication_required" || failure.code === "verified_email_required"
+        ? failure.code : "intake_unavailable");
+    }
+    const result = (await response.json()) as { caseId?: string };
+    if (!result.caseId) throw new Error("intake_response_invalid");
+    setIntakeError(undefined);
+    setIntakeNeedsAuth(false);
+  }
+
+  function handleIntakeFailure(error: unknown) {
+    if (error instanceof Error && ["authentication_required", "verified_email_required"].includes(error.message)) {
+      setIntakeNeedsAuth(true);
+      setIntakeError("Tu sesión venció. Verificá tu email nuevamente para continuar; los datos que cargaste se conservan.");
+      return;
+    }
+    setIntakeNeedsAuth(false);
+    setIntakeError("No pudimos guardar tu alta para seguimiento. Revisá la conexión e intentá nuevamente.");
+  }
+
+  function returnToEmailVerification() {
+    setIntakeNeedsAuth(false);
+    setIntakeError(undefined);
+    setVerifiedEmail(undefined);
+    setAccount(undefined);
+    setSelectedOrganizationId(undefined);
+    setSignInNotice(undefined);
+    setSignInSent(false);
+    callbackReturnRef.current = false;
+    setPostActivation(false);
+    navigate(1, -1);
+  }
+
+  async function continueToPayment() {
+    if (intakeBusy) return;
     if (!administrationNamesReady) {
       navigate(0, -1);
       return;
+    }
+    setIntakeBusy(true);
+    setIntakeError(undefined);
+    try {
+      await submitPlatformIntake();
+    } catch (error) {
+      handleIntakeFailure(error);
+      return;
+    } finally {
+      setIntakeBusy(false);
     }
     setHasOpenedPayment(true);
     setStep3View("payment");
@@ -564,10 +673,23 @@ export default function SignupWizard() {
     );
   }
 
-  function next(event?: FormEvent) {
+  async function next(event?: FormEvent) {
     event?.preventDefault();
+    if (intakeBusy) return;
     setAttempted(true);
     if (!stepValid || step >= steps.length - 1) return;
+    if (step === 2 && administrationNamesReady) {
+      setIntakeBusy(true);
+      setIntakeError(undefined);
+      try {
+        await submitPlatformIntake();
+      } catch (error) {
+        handleIntakeFailure(error);
+        return;
+      } finally {
+        setIntakeBusy(false);
+      }
+    }
     navigate(step + 1, 1);
   }
 
@@ -588,20 +710,57 @@ export default function SignupWizard() {
   }, [emailIsVerified, hydrated, postActivation, step]);
 
   useEffect(() => {
-    if (searchParams.get("eli_activation_resume") === "1") {
+    if (resumeToConsortium) {
       callbackReturnRef.current = false;
       setPostActivation(false);
-      setStep(2);
     }
-  }, [searchParams]);
+  }, [resumeToConsortium]);
 
-  function openDesk() {
-    const deskUrl = process.env.NEXT_PUBLIC_ELI_DESK_URL;
-    if (deskUrl && payment?.active) {
-      window.location.assign(deskUrl);
+  async function openDesk() {
+    if (deskBusy || !payment?.attemptId || !payment.paymentApproved || payment.entitlementState !== "ACTIVE") {
+      setDeskNotice(true);
       return;
     }
-    setDeskNotice(true);
+    setDeskBusy(true);
+    setDeskNotice(false);
+    try {
+      const authorization = await authorizationHeader();
+      if (!authorization) {
+        setDeskNeedsAuth(true);
+        throw new Error("authentication_required");
+      }
+      const response = await fetch("/api/desk/handoff", {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: authorization },
+        body: JSON.stringify({ attemptId: payment.attemptId }),
+        cache: "no-store",
+      });
+      if (response.status === 401) setDeskNeedsAuth(true);
+      const result = (await response.json()) as { ok?: boolean; tokenHash?: string; attemptId?: string; postUrl?: string };
+      if (!response.ok || !result.ok || !result.tokenHash || !result.attemptId || !result.postUrl) {
+        throw new Error("desk_handoff_unavailable");
+      }
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = result.postUrl;
+      form.hidden = true;
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "token_hash";
+      input.value = result.tokenHash;
+      form.append(input);
+      const attemptInput = document.createElement("input");
+      attemptInput.type = "hidden";
+      attemptInput.name = "attempt_id";
+      attemptInput.value = result.attemptId;
+      form.append(attemptInput);
+      document.body.append(form);
+      form.submit();
+    } catch {
+      setDeskBusy(false);
+      setDeskNotice(true);
+    }
   }
 
   async function requestEmailSignIn() {
@@ -623,10 +782,12 @@ export default function SignupWizard() {
         setSignInNotice("No pudimos conservar tus datos en este navegador. Permití el almacenamiento local y solicitá el enlace nuevamente.");
         return;
       }
+      const callbackUrl = new URL(buildLandingAuthCallbackUrl(window.location.origin, data.plan, draftId));
+      if (payment?.paymentApproved) callbackUrl.searchParams.set("eli_paid_attempt", payment.attemptId);
       const { error } = await authClient.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: buildLandingAuthCallbackUrl(window.location.origin, data.plan, draftId),
+          emailRedirectTo: callbackUrl.toString(),
         },
       });
       if (error) {
@@ -634,8 +795,10 @@ export default function SignupWizard() {
         throw error;
       }
       setSignInNotice("Si este email puede ingresar, vas a recibir un enlace para continuar.");
+      setSignInSent(true);
     } catch {
-      setSignInNotice("No pudimos enviar el enlace. Revisá el email e intentá nuevamente.");
+      setSignInSent(false);
+      setSignInNotice("No pudimos enviar el enlace. Intentá nuevamente.");
     } finally {
       setSignInBusy(false);
     }
@@ -671,7 +834,7 @@ export default function SignupWizard() {
       setPaymentError(message);
       throw new Error(message);
     }
-    if (selectedPending && selectedPending.attempt_status !== "created") {
+    if (selectedPending && selectedPending.attempt_status !== "created" && !checkoutConfiguration.localStub) {
       if (!selectedPending.attempt_id || !pendingCanStart) {
         const message = "Esta alta requiere revisión antes de reanudar el pago.";
         setPaymentError(message);
@@ -687,6 +850,13 @@ export default function SignupWizard() {
       });
       navigate(selectedPending.attempt_status === "approved" ? 5 : 4, 1);
       return;
+    }
+    try {
+      await submitPlatformIntake("checkout_started");
+    } catch {
+      const message = "No pudimos actualizar el seguimiento del alta. Reintentá antes de iniciar el pago.";
+      setPaymentError(message);
+      throw new Error(message);
     }
     const response = await fetch("/api/payments/checkout", {
       method: "POST",
@@ -765,6 +935,11 @@ export default function SignupWizard() {
                       className="grid gap-5 sm:grid-cols-2"
                       onSubmit={next}
                     >
+                      {intakeError && (
+                        <p role="alert" className="text-sm text-[#2346DD] sm:col-span-2">
+                          {intakeError} Volvé a enviar los datos para reintentar.
+                        </p>
+                      )}
                       <Field
                         id="administration-name"
                         label="Nombre de la administración"
@@ -823,7 +998,7 @@ export default function SignupWizard() {
                       ) : (
                         <>
                           <div>
-                            <h3 className="font-semibold">Te enviamos un enlace a {data.email}</h3>
+                            <h3 className="font-semibold">{signInSent ? `Enlace solicitado para ${data.email}` : `Verificá ${data.email}`}</h3>
                             <p className="mt-1 text-sm leading-relaxed text-[#323159]/65">
                               Abrilo desde cualquier pestaña o dispositivo. Tus datos y el plan elegido se conservan para que puedas volver y seguir donde dejaste.
                             </p>
@@ -834,7 +1009,7 @@ export default function SignupWizard() {
                             disabled={!authConfigurationReady || !isValidEmail(data.email) || signInBusy}
                             className="min-h-11 justify-self-start rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {signInBusy ? "Enviando enlace…" : signInNotice ? "Reenviar enlace" : "Enviar enlace de verificación"}
+                            {signInBusy ? "Enviando enlace…" : signInSent ? "Reenviar enlace" : "Enviar enlace de verificación"}
                           </button>
                           {!authConfigurationReady && (
                             <p className="text-sm text-amber-900" role="status">Falta configurar Supabase Auth en este entorno.</p>
@@ -900,6 +1075,10 @@ export default function SignupWizard() {
                       />
                     </form>
                   </StepShell>
+                )}
+
+                {step === 2 && intakeError && (
+                  <p role="alert" className="mt-4 text-sm text-[#2346DD]">{intakeError}</p>
                 )}
 
                 {step === 3 && (
@@ -976,12 +1155,18 @@ export default function SignupWizard() {
                                 <SummaryItem label="Dirección" value={data.address} className="sm:col-span-2" />
                               </div>
                             </section>
+                            {intakeError && (
+                              <p role="alert" className="text-sm text-[#2346DD]">
+                                {intakeError} Reintentá guardar el alta antes de continuar.
+                              </p>
+                            )}
                             <button
                               type="button"
                               onClick={continueToPayment}
+                              disabled={intakeBusy}
                               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[17px] bg-[#2346DD] px-5 font-semibold text-white transition hover:bg-[#1939c4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25"
                             >
-                              {administrationNamesReady ? "Continuar al pago" : "Completar datos iniciales"} <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                              {intakeBusy ? "Guardando…" : administrationNamesReady ? "Continuar al pago" : "Completar datos iniciales"} <ArrowRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                           </div>
                         </section>
@@ -1129,7 +1314,7 @@ export default function SignupWizard() {
                 {step === 4 && (
                   <StepShell
                     title={payment?.status === "rejected" ? "Pago rechazado" : "Estamos verificando el pago"}
-                    subtitle="La pantalla no activa ELI: esperamos la confirmación server-side de Mercado Pago."
+                    subtitle={checkoutConfiguration?.localStub ? "Prueba con simulador local: no se realizan cobros." : "Esperamos la confirmación del pago de Mercado Pago."}
                   >
                     <div className="rounded-[28px] bg-[#F3F5FF] p-6 sm:p-8">
                       <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] bg-white shadow-sm ${payment?.status === "rejected" ? "text-red-600" : "text-[#2346DD]"}`}>
@@ -1140,7 +1325,9 @@ export default function SignupWizard() {
                         )}
                       </div>
                       <p className="mt-6 text-lg font-semibold">
-                        {payment?.status === "rejected"
+                        {checkoutConfiguration?.localStub
+                          ? payment?.status === "rejected" ? "El simulador devolvió un pago rechazado." : "La simulación está pendiente de conciliación."
+                          : payment?.status === "rejected"
                           ? "Mercado Pago no aprobó el cobro."
                           : payment?.status === "pending_review"
                             ? "El pago está pendiente o en revisión."
@@ -1152,10 +1339,10 @@ export default function SignupWizard() {
                           aria-hidden="true"
                         />
                         <p>
-                          Los redirects son sólo informativos. Tu administración se habilita únicamente cuando ELI verifica un pago aprobado.
+                          {checkoutConfiguration?.localStub ? "Este resultado simulado no confirma una suscripción comercial." : "Tu administración se habilita únicamente cuando ELI verifica un pago aprobado."}
                         </p>
                       </div>
-                      {payment?.status === "rejected" && (
+                      {(payment?.status === "rejected" || (checkoutConfiguration?.localStub && payment?.status === "provider_pending")) && (
                         <button type="button" onClick={returnToPayment} className="mt-5 min-h-12 rounded-[18px] bg-white px-5 text-sm font-semibold text-[#2346DD]">
                           Volver al checkout
                         </button>
@@ -1176,31 +1363,50 @@ export default function SignupWizard() {
               </motion.div>
             </AnimatePresence>
 
+            {intakeNeedsAuth && step !== 5 && (
+              <button type="button" onClick={returnToEmailVerification}
+                className="mt-4 min-h-11 rounded-full border border-[#2346DD]/25 px-4 text-sm font-semibold text-[#2346DD] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25">
+                Volver a verificar mi email
+              </button>
+            )}
+
             <WizardNavigation
               step={step}
               onBack={back}
               onNext={() => next()}
               onDesk={openDesk}
-              operationalReady={Boolean(payment?.operationalReady)}
+              deskReady={Boolean(payment?.paymentApproved && payment.entitlementState === "ACTIVE" && !deskNeedsAuth)}
+              deskBusy={deskBusy}
+              nextBusy={intakeBusy}
               hideNext={step === 3 || step === 4}
             />
 
-            {step !== 5 && (
+            {step === 4 && (
               <p
-                className={`${step === 3 ? "mt-1" : "mt-3 min-h-5"} text-center text-xs text-[#323159]/55 lg:text-right`}
+                className="mt-3 min-h-5 text-center text-xs text-[#323159]/55 lg:text-right"
                 aria-live="polite"
               >
-                {deskNotice
-                  ? "ELI Desk debe resolver la sesión y el tenant activo antes de permitir el acceso."
-                  : "No recargues la página mientras verificamos el estado."}
+                No recargues la página mientras verificamos el estado.
               </p>
             )}
             {step === 5 && (
-              <p className="mt-2 text-right text-xs text-[#323159]/55" aria-live="polite">
-                {payment?.operationalReady
-                  ? "Suscripción activa confirmada por ELI."
-                  : "Pago aprobado; activación todavía pendiente."}
+              <p className={`mt-2 text-right text-xs ${deskNeedsAuth ? "text-[#2346DD]" : "text-[#323159]/55"}`} aria-live="polite">
+                {deskNotice
+                  ? deskNeedsAuth ? "Tu sesión venció. Verificá tu email para retomar el acceso con el pago ya aprobado." : "No pudimos abrir ELI Desk. Esperá un momento y volvé a intentar."
+                  : payment?.operationalReady
+                    ? "Suscripción activa confirmada por ELI."
+                    : "Pago aprobado; el acceso de configuración está listo."}
               </p>
+            )}
+            {step === 5 && deskNeedsAuth && (
+              <div className="mt-3 grid gap-2 text-sm text-[#2346DD]">
+                <button type="button" onClick={() => void requestEmailSignIn()}
+                  disabled={signInBusy || !authConfigurationReady}
+                  className="min-h-11 rounded-full border border-[#2346DD]/25 px-4 font-semibold disabled:opacity-50">
+                  {signInBusy ? "Enviando enlace…" : signInSent ? "Reenviar enlace de acceso" : "Verificar email y retomar acceso"}
+                </button>
+                {signInNotice && <p role="status">{signInNotice}</p>}
+              </div>
             )}
           </div>
           {step === 5 && (
@@ -1653,14 +1859,18 @@ function WizardNavigation({
   onBack,
   onNext,
   onDesk,
-  operationalReady,
+  deskReady,
+  deskBusy,
+  nextBusy,
   hideNext,
 }: {
   step: number;
   onBack: () => void;
   onNext: () => void;
   onDesk: () => void;
-  operationalReady: boolean;
+  deskReady: boolean;
+  deskBusy: boolean;
+  nextBusy: boolean;
   hideNext: boolean;
 }) {
   const nextLabels = [
@@ -1696,19 +1906,21 @@ function WizardNavigation({
           type={step <= 1 ? "submit" : "button"}
           form={step <= 1 ? "signup-step-form" : undefined}
           onClick={step <= 1 ? undefined : onNext}
+          disabled={nextBusy}
+          aria-busy={nextBusy}
           className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[18px] bg-[#2346DD] px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:-translate-y-0.5 hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 motion-reduce:transform-none sm:px-7"
         >
-          {nextLabels[step]}
+          {nextBusy ? "Guardando…" : nextLabels[step]}
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </button>
-      ) : step === steps.length - 1 && operationalReady ? (
+      ) : step === steps.length - 1 && deskReady ? (
         <button
           type="button"
           onClick={onDesk}
           className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[18px] bg-[#2346DD] px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(35,70,221,0.24)] transition hover:-translate-y-0.5 hover:bg-[#1D3BC4] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2346DD]/25 motion-reduce:transform-none sm:px-7"
         >
-          Entrar a ELI Desk
-          <ArrowRight className="h-5 w-5" aria-hidden="true" />
+          {deskBusy ? "Conectando..." : "Empezar"}
+          {!deskBusy && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
         </button>
       ) : <span />}
     </div>
